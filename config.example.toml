@@ -26,6 +26,11 @@ min_count = 1
 grammar_pos = ["ADP", "PART", "SCONJ", "AUX"]
 include_grammar = false
 
+[anki]
+deck = "vocab-miner"
+# limit = 300            # only the first N new words
+include_known = false
+
 [examples]
 per_entry = 3
 exclude_tags = ["spoiler"]

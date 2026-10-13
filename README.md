@@ -63,6 +63,16 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
    欄位：學習順序、原形、平假名讀音、拼音、詞性、中文／英文釋義、出現次數、出現在幾個單位、累積覆蓋率、
    素材中的變化形、出現在哪些單位、⚠ 同形異義（漢字和中文相同但意思不同）、學習狀態、例句與中譯、聲音連結。
 
+4. 匯出 Anki 牌組（需要 `uv sync --extra anki`）：
+
+   ```bash
+   uv run vm anki                 # → out/vocab.apkg，在 Anki／AnkiDroid 匯入
+   ```
+
+   每個詞一張卡：正面是單字與讀音，背面是拼音、中文釋義、同形異義警告、注音假名例句（目標詞加粗）、
+   例句拼音與中譯、聽這一句的連結。新卡依學習順序出現，已學會的詞不放進去。
+   卡片有固定的 ID，詞彙表更新後重新匯入只會更新內容，不會重複，也不會清掉複習紀錄。
+
 詞彙表的細節：
 
 - **讀音校正**：素材本身附讀音時（例如歌詞的注音假名，`Utterance.reading_hint`），會用它校正分詞器的讀音，
@@ -110,7 +120,8 @@ uv sync --extra ja
 uv run vm setup-dict                       # JMdict English glosses (one time, ~10 MB)
 cp config.example.toml config.local.toml   # then list your material under [[sources]]
 uv run vm ingest                           # -> data/corpus/<source_id>.jsonl
-uv run vm vocab                            # -> out/vocab.csv
+uv run vm vocab                            # -> out/vocab.csv, out/grammar.csv
+uv run vm anki                             # -> out/vocab.apkg (needs: uv sync --extra anki)
 ```
 
 Particles and auxiliaries go to a separate `out/grammar.csv` by default. The vocabulary list ranks lemmas by how many docs (songs, scenes) they appear in, then by count, with cumulative

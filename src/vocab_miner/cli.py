@@ -121,6 +121,41 @@ def vocab(
         typer.echo(f"{len(entries)} {label} -> {p}" + (f" ({no_zh} without a Chinese gloss)" if no_zh else ""))
 
 
+@app.command()
+def anki(
+    source: Annotated[list[str] | None, typer.Option("--source", "-s", help="Only these source ids.")] = None,
+    doc: Annotated[list[str] | None, typer.Option("--doc", "-d", help="Only these doc ids (e.g. one song).")] = None,
+    limit: Annotated[int | None, typer.Option(help="Only the first N words (in learning order).")] = None,
+    deck: Annotated[str | None, typer.Option(help="Deck name (default from [anki] deck).")] = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Output .apkg path.")] = None,
+    root: RootOpt = None,
+):
+    """Export the vocabulary as an Anki deck (out/vocab.apkg). Known words are skipped."""
+    try:
+        from .export.anki import AnkiExporter
+    except ImportError:
+        typer.secho("needs genanki: uv sync --extra anki", fg="red", err=True)
+        raise typer.Exit(1)
+
+    cfg = _config(root)
+    acfg = cfg.get("anki", {})
+    pipe = Pipeline(cfg)
+    try:
+        pipe.build(log=lambda m: None)
+        res = pipe.vocab(source, doc, log=typer.echo)
+    except (ConfigError, ImportError) as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    romanizer = pipe.romanizer()
+    exporter = AnkiExporter(deck=deck or acfg.get("deck", "vocab-miner"), limit=limit or acfg.get("limit"),
+                            include_known=acfg.get("include_known", False),
+                            romanize_tokens=getattr(romanizer, "romanize_tokens", None))
+    suffix = "".join(f"_{d}" for d in (doc or []))
+    path = out or cfg.out_dir / f"vocab{suffix}.apkg"
+    n = exporter.export(res.entries, res.utterances, path, tokens=pipe.tokens_for(res.utterances))
+    typer.echo(f"{n} cards -> {path}")
+
+
 @app.command(name="setup-dict")
 def setup_dict(root: RootOpt = None):
     """Download JMdict (English glosses, CC BY-SA 4.0) into .cache/dict/."""

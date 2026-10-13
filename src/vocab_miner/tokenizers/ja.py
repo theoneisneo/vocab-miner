@@ -347,4 +347,18 @@ class HepburnRomanizer:
         return self.romanize(token.reading or token.surface)
 
     def romanize_tokens(self, tokens: Sequence[Token]) -> str:
-        return " ".join(self.romanize_token(t) for t in tokens if t.pos != "PUNCT")
+        """Sentence romaji with spaces between words; inflection (auxiliaries, conjunctive て, suffixes)
+        is attached to the word before it: tabete ita, mitorete iru."""
+        out: list[str] = []
+        for t in tokens:
+            if t.pos == "PUNCT":
+                continue
+            r = self.romanize_token(t)
+            if out and out[-1].endswith("'") and r[:1].isalpha() and r[0] not in "aeiou":
+                out[-1] = out[-1][:-1] + ("t" if r.startswith("ch") else r[0])   # small tsu across tokens
+            attach = out and (t.pos == "AUX" or t.pos_native.startswith(("助詞-接続助詞", "接尾辞")))
+            if attach:
+                out[-1] += r
+            else:
+                out.append(r)
+        return " ".join(out)

@@ -100,6 +100,10 @@ class Pipeline:
     def open_index(self) -> Index:
         return Index(index_path(self.config))
 
+    def tokens_for(self, utt_ids) -> dict[str, list]:
+        with self.open_index() as idx:
+            return {i: idx.tokens(i) for i in utt_ids}
+
     def build(self, force: bool = False, log: Callable[[str], None] = print) -> None:
         with self.open_index() as idx:
             build_index(idx, corpus_files(self.config), self.tokenizer_for, self.tokenizer_id(),
