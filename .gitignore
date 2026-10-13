@@ -1,0 +1,15 @@
+# --- private: never commit (see CLAUDE.md "公開與私人的界線") ---
+private/
+data/
+out/
+.cache/
+config.local.toml
+CLAUDE.local.md
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/

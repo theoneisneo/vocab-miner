@@ -1,0 +1,37 @@
+# Copy to config.local.toml (gitignored) and edit.
+
+data_dir = "data"
+out_dir = "out"
+target_lang = "ja"
+gloss_langs = ["zh-Hant", "en"]
+
+[tokenizer]
+plugin = "vocab_miner.tokenizers.ja:JapaneseTokenizer"
+
+[romanizer]
+plugin = "vocab_miner.tokenizers.ja:HepburnRomanizer"
+macrons = false          # とうきょう -> toukyou
+
+[examples]
+per_entry = 3
+exclude_tags = ["spoiler"]
+
+# One [[sources]] block per material. Public sources shown; private ones use private.sources.xxx:Class
+[[sources]]
+id = "demo/text"
+plugin = "vocab_miner.sources.text:TextSource"
+path = "tests/fixtures/ja_sample.txt"
+lang = "ja"
+
+split = "line"            # line / paragraph / sentence
+
+# [[sources]]
+# id = "songs/subtitles"
+# plugin = "vocab_miner.sources.subtitle:SubtitleSource"
+# path = "data/raw/subs/"      # .lrc / .srt / .vtt; song.mp3 next to song.lrc is used as media
+# lang = "ja"
+# youtube = { "some-song" = "VIDEO_ID" }   # optional, per doc_id, when there is no local audio
+#
+# Framework options accepted by every source:
+# no_stats_docs = ["some-song-live"]       # leave out of frequency stats, still usable as examples
+# add_tags = ["ch01"]
