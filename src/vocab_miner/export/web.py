@@ -7,8 +7,10 @@ from a local file and keeps it on the device.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
+from importlib import resources
 from pathlib import Path
 
 from ..model import NO_STATS_TAG, Token, Utterance, VocabEntry
@@ -17,10 +19,30 @@ from ..render import segments
 FORMAT_VERSION = 1
 
 
-def _word(e: VocabEntry, grammar: bool) -> dict:
+def load_short_labels(lang: str = "ja", gloss_lang: str = "zh") -> dict[str, str]:
+    try:
+        text = resources.files("vocab_miner.data").joinpath(f"short_glosses_{lang}_{gloss_lang}.tsv").read_text(
+            encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    return dict(ln.split("\t")[:2] for ln in text.splitlines() if ln.strip() and not ln.startswith("#"))
+
+
+def short_gloss(gloss: str, limit: int = 6) -> str:
+    """First sense of a gloss, for the word-by-word line: "眼淚；同情" -> "眼淚", "在、有（人或動物）" -> "在"."""
+    g = re.sub(r"（[^）]*）|\([^)]*\)", "", gloss)
+    for sep in ("；", ";", "/", "、", "，", ","):
+        g = g.split(sep)[0]
+    g = g.strip(" …")
+    return g if len(g) <= limit else g[: limit - 1] + "…"
+
+
+def _word(e: VocabEntry, grammar: bool, labels: dict[str, str]) -> dict:
+    zh = e.gloss.get("zh-Hant", "")
     return {
         "key": e.key, "lemma": e.lemma, "reading": e.reading or "", "romaji": e.romaji or "",
-        "pos": e.pos_label or e.pos, "zh": e.gloss.get("zh-Hant", ""), "en": e.gloss.get("en", ""),
+        "pos": e.pos_label or e.pos, "upos": e.pos, "short": (labels.get(e.lemma) if grammar else None) or short_gloss(zh),
+        "zh": zh, "en": e.gloss.get("en", ""),
         "ff": e.false_friend or "", "rank": e.rank, "count": e.count, "docFreq": e.doc_freq,
         "grammar": grammar, "status": e.status,
     }
@@ -30,7 +52,8 @@ def build_web_data(entries: Sequence[VocabEntry], grammar: Sequence[VocabEntry],
                    tokens: Mapping[str, list[Token]], titles: Mapping[tuple[str, str], str], lang: str,
                    romanize_tokens: Callable[[Sequence[Token]], str] | None = None,
                    translation_lang: str = "zh-Hant") -> dict:
-    words = [_word(e, False) for e in entries] + [_word(e, True) for e in grammar]
+    labels = load_short_labels(lang, translation_lang.split("-")[0])
+    words = [_word(e, False, labels) for e in entries] + [_word(e, True, labels) for e in grammar]
     index_of = {w["key"]: i for i, w in enumerate(words)}
 
     docs: dict[tuple[str, str], dict] = {}

@@ -9,6 +9,9 @@
   --new: #c2410c;
   --warn: #b45309;
   --current: #fff4c2;
+  --prt: #2563eb;
+  --pred: #15803d;
+  --aux: #9333ea;
   --radius: 12px;
   color-scheme: light;
 }
@@ -24,6 +27,9 @@
     --new: #fb923c;
     --warn: #fbbf24;
     --current: #463d12;
+    --prt: #93c5fd;
+    --pred: #4ade80;
+    --aux: #d8b4fe;
     color-scheme: dark;
   }
 }
@@ -127,8 +133,28 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .line-time { float: right; font-size: 12px; color: var(--muted); margin-left: 8px; font-variant-numeric: tabular-nums; }
 
 .w { cursor: pointer; border-radius: 4px; }
-.w.new { text-decoration: underline; text-decoration-color: var(--new); text-decoration-thickness: 2px; text-underline-offset: 6px; }
-.hide-ruby .w.new { text-underline-offset: 4px; }
+.w.new .wt { text-decoration: underline; text-decoration-color: var(--new); text-decoration-thickness: 2px; text-underline-offset: 6px; }
+.hide-ruby .w.new .wt { text-underline-offset: 4px; }
+
+/* word-by-word mode: a short meaning under each word */
+.gl { display: none; }
+.show-gloss .line-jp { line-height: 1.5; }
+.show-gloss .w { display: inline-flex; flex-direction: column; align-items: center; vertical-align: top; margin: 2px 3px 6px; }
+.show-gloss .gl { display: block; font-size: 11px; line-height: 1.25; color: var(--muted); white-space: nowrap; margin-top: 2px; }
+.show-gloss .line-jp ruby rt { font-size: 10px; }
+
+/* structure colours */
+.show-struct .role-prt .wt { color: var(--prt); }
+.show-struct .role-pred .wt { color: var(--pred); font-weight: 600; }
+.show-struct .role-aux .wt { color: var(--aux); }
+.show-struct .role-prt .gl { color: var(--prt); }
+.show-struct .role-aux .gl { color: var(--aux); }
+.legend { display: none; gap: 10px; flex-wrap: wrap; padding: 4px 16px 8px; background: var(--bg); font-size: 12px; border-bottom: 1px solid var(--line); }
+.show-struct .legend { display: flex; }
+.legend .role-prt { color: var(--prt); }
+.legend .role-pred { color: var(--pred); font-weight: 600; }
+.legend .role-aux { color: var(--aux); }
+.legend-note { color: var(--muted); }
 .w.grammar { color: inherit; }
 .w:active, .w.sel { background: var(--accent-soft); }
 

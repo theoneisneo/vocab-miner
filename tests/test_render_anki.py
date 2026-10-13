@@ -123,6 +123,8 @@ def test_web_data():
     assert "".join(s[0] for s in line["seg"]) == TEXT
     assert ["雨", "あめ", 0] in line["seg"] and ["が", None, 1] in line["seg"]
     assert ["今日", "きょう", None] in line["seg"]                        # not in the word lists: not linked
+    assert (d["words"][0]["upos"], d["words"][0]["short"]) == ("NOUN", "雨")
+    assert d["words"][1]["short"] == "主語"                                # grammar label from the data file
     assert other["lines"][0]["seg"] == [["雨", None, None]]               # no tokens: plain text
 
 
@@ -190,3 +192,23 @@ def test_kana_units_and_deck(tmp_path):
     assert next(n for n in notes if n["Kana"] == "っ")["Speech"] == ""         # small tsu alone has no sound
     models = json.loads(db.execute("SELECT models FROM col").fetchone()[0])
     assert any("{{tts ja_JP:Speech}}" in t["qfmt"] for m in models.values() for t in m["tmpls"])
+
+
+@pytest.mark.parametrize("gloss, expected", [
+    ("眼淚", "眼淚"), ("邂逅、遇見", "邂逅"), ("在、有（人或動物）；正在", "在"), ("（主題標記）至於…；表對比", "至於"),
+    ("to eat / to live on", "to eat"), ("", ""), ("一二三四五六七八", "一二三四五…"),
+])
+def test_short_gloss(gloss, expected):
+    from vocab_miner.export.web import short_gloss
+    assert short_gloss(gloss) == expected
+
+
+def test_short_labels_only_for_grammar_words():
+    from vocab_miner.export.web import build_web_data, load_short_labels
+
+    labels = load_short_labels()
+    assert labels["を"] == "受詞" and labels["〜ている"] == "正在"
+    adj = VocabEntry(lemma="ない", lang="ja", pos="ADJ", key="無い\tない", reading="ない", gloss={"zh-Hant": "沒有、不存在"})
+    aux = VocabEntry(lemma="ない", lang="ja", pos="AUX", key="ない\tない", reading="ない", gloss={"zh-Hant": "不、沒"})
+    d = build_web_data([adj], [aux], [], {}, {}, "ja")
+    assert [w["short"] for w in d["words"]] == ["沒有", "不"]

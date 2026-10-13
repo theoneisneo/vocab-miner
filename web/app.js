@@ -42,7 +42,8 @@ async function kvDel(key) {
 }
 
 const PREFS_KEY = "vm.prefs";
-const prefs = Object.assign({ ruby: true, romaji: true, tr: true, follow: true, loop: false, rate: 1 },
+const prefs = Object.assign({ ruby: true, romaji: true, tr: true, gloss: false, struct: false, follow: true,
+  loop: false, rate: 1 },
   safeJson(localStorageGet(PREFS_KEY)));
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function localStorageSet(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } }
@@ -179,11 +180,14 @@ function renderDoc(doc) {
     if (playerReady) player.setPlaybackRate(prefs.rate);
   } }, `${prefs.rate}×`);
   const toolbar = el("div", { class: "toolbar" },
-    chip("假名", "ruby"), chip("拼音", "romaji"), chip("中文", "tr"),
+    chip("假名", "ruby"), chip("拼音", "romaji"), chip("中文", "tr"), chip("逐詞", "gloss"), chip("結構", "struct"),
     hasVideo ? chip("跟隨", "follow") : null,
     hasVideo ? chip("單句重複", "loop", () => { loopLine = prefs.loop ? currentLine : -1; }) : null,
     hasVideo ? rateBtn : null);
   stick.append(toolbar);
+  stick.append(el("div", { class: "legend" },
+    el("span", { class: "role-prt" }, "助詞"), el("span", { class: "role-pred" }, "動詞・形容詞"),
+    el("span", { class: "role-aux" }, "時態・否定・句型"), el("span", { class: "legend-note" }, "動詞通常在句尾")));
 
   const lines = el("ol", { class: "lines" }, doc.lines.map((line, i) => renderLine(doc, line, i)));
   root.append(lines);
@@ -196,6 +200,23 @@ function applyPrefClasses(root) {
   root.classList.toggle("hide-ruby", !prefs.ruby);
   root.classList.toggle("hide-romaji", !prefs.romaji);
   root.classList.toggle("hide-tr", !prefs.tr);
+  root.classList.toggle("show-gloss", !!prefs.gloss);
+  root.classList.toggle("show-struct", !!prefs.struct);
+}
+
+/** Sentence role used for colouring: particles, predicates (verbs/adjectives), auxiliaries (tense, negation...). */
+function role(w) {
+  if (["ADP", "PART", "SCONJ"].includes(w.upos)) return "prt";
+  if (w.upos === "AUX") return "aux";
+  if (["VERB", "ADJ"].includes(w.upos)) return "pred";
+  return "";
+}
+
+/** Short meaning under a word; falls back to the first sense of the gloss for older data files. */
+function shortGloss(w) {
+  if (w.short !== undefined) return w.short;
+  const g = (w.zh || "").replace(/（[^）]*）|\([^)]*\)/g, "").split(/[；;/、，,]/)[0].replace(/^[\s…]+|[\s…]+$/g, "");
+  return g.length <= 6 ? g : g.slice(0, 5) + "…";
 }
 
 function renderLine(doc, line, i) {
@@ -207,9 +228,13 @@ function renderLine(doc, line, i) {
     if (wi === null) { span = null; spanWord = null; jp.append(node); continue; }
     if (wi !== spanWord) {
       const w = data.words[wi];
-      const s = el("span", { class: "w" + (w.grammar ? " grammar" : isKnown(w) ? "" : " new"), "data-w": wi });
+      const r = role(w);
+      const s = el("span", { class: "w" + (w.grammar ? " grammar" : isKnown(w) ? "" : " new") + (r ? ` role-${r}` : ""),
+        "data-w": wi });
+      const text = el("span", { class: "wt" });
+      s.append(text, el("span", { class: "gl" }, shortGloss(w)));
       s.addEventListener("click", (ev) => { ev.stopPropagation(); openWord(w, s); });
-      span = s;
+      span = text;
       spanWord = wi;
       jp.append(s);
     }
