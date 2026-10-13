@@ -73,6 +73,23 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
    例句拼音與中譯、聽這一句的連結。新卡依學習順序出現，已學會的詞不放進去。
    卡片有固定的 ID，詞彙表更新後重新匯入只會更新內容，不會重複，也不會清掉複習紀錄。
 
+5. 跟唱網頁（手機可安裝的 PWA，程式在 `web/`）：
+
+   ```bash
+   uv run vm web                  # → out/web/songs.json（含你的素材，只存在本機）
+   ```
+
+   網頁本身不含任何素材，可以放在任何 HTTPS 靜態網站（例如這個 repo 的 GitHub Pages）。
+   在手機的 Chrome 打開網址 →「加到主畫面」→ 在 app 裡「匯入資料檔」選 `songs.json`。資料只存在手機上，離線也能看歌詞。
+
+   - 每句顯示原文（漢字上標假名）、拼音、中譯，三者都可以切換。
+   - 點一句：影片從這一句開始播；播放時目前這句會高亮並自動捲動。單句重複、0.75／0.5 倍速。
+   - 點一個詞：顯示讀音、釋義、同形異義警告，可標記「已學會」；生詞有底線，學會後消失。
+   - 歌曲清單依「已懂比例」排序，最容易的排最上面。
+   - 選單可匯出已學會的詞，放到電腦的 `data/known/ja.txt` 就會同步到詞彙表和 Anki。
+
+   本機預覽：`uv run python -m http.server 8765`，打開 `http://localhost:8765/web/`。
+
 詞彙表的細節：
 
 - **讀音校正**：素材本身附讀音時（例如歌詞的注音假名，`Utterance.reading_hint`），會用它校正分詞器的讀音，
@@ -122,7 +139,13 @@ cp config.example.toml config.local.toml   # then list your material under [[sou
 uv run vm ingest                           # -> data/corpus/<source_id>.jsonl
 uv run vm vocab                            # -> out/vocab.csv, out/grammar.csv
 uv run vm anki                             # -> out/vocab.apkg (needs: uv sync --extra anki)
+uv run vm web                              # -> out/web/songs.json for the sing-along app in web/
 ```
+
+`web/` is a static, installable sing-along page (no build step, no material inside): host it on any HTTPS static
+site, open it on your phone, and import `songs.json`; the data stays on the device. Lines show furigana, romaji and
+translation; tapping a line plays the video from that moment; tapping a word shows its gloss and lets you mark it
+known.
 
 Particles and auxiliaries go to a separate `out/grammar.csv` by default. The vocabulary list ranks lemmas by how many docs (songs, scenes) they appear in, then by count, with cumulative
 coverage, readings, Hepburn romaji, glosses (JMdict for English; your own editable TSV for other languages —

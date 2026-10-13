@@ -99,3 +99,27 @@ def test_sentence_romaji_attaches_inflection():
     r, t = HepburnRomanizer(), JapaneseTokenizer()
     assert r.romanize_tokens(t.tokenize("僕は食べられなかった")) == "boku wa taberarenakatta"
     assert r.romanize_tokens(t.tokenize("待って")) == "matte"
+
+
+def test_web_data():
+    from vocab_miner.export.web import FORMAT_VERSION, build_web_data
+
+    u1 = Utterance(id="s:d:1", source_id="s", doc_id="d", seq=1, lang="ja", text=TEXT,
+                   translations={"zh-Hant": "今天下雨了"}, media=MediaRef("youtube", "VID", 1.0, 3.0))
+    u2 = Utterance(id="s:e:1", source_id="s", doc_id="e", seq=1, lang="ja", text="雨", tags=["no-stats"])
+    rain = VocabEntry(lemma="雨", lang="ja", pos="NOUN", key="雨\tあめ", reading="あめ", rank=1,
+                      gloss={"zh-Hant": "雨", "en": "rain"})
+    ga = VocabEntry(lemma="が", lang="ja", pos="ADP", key="が\tが", reading="が", rank=1)
+    d = build_web_data([rain], [ga], [u1, u2], {u1.id: TOKENS}, {("s", "d"): "Song"}, "ja",
+                       romanize_tokens=lambda ts: "kyou ame ga futta")
+    assert d["format"] == "vocab-miner-web" and d["version"] == FORMAT_VERSION
+    assert [w["lemma"] for w in d["words"]] == ["雨", "が"] and d["words"][1]["grammar"] is True
+    doc, other = d["docs"]
+    assert (doc["title"], doc["media"], doc["noStats"]) == ("Song", {"kind": "youtube", "uri": "VID"}, False)
+    assert (other["title"], other["media"], other["noStats"]) == ("e", None, True)
+    line = doc["lines"][0]
+    assert (line["start"], line["end"], line["tr"], line["romaji"]) == (1.0, 3.0, "今天下雨了", "kyou ame ga futta")
+    assert "".join(s[0] for s in line["seg"]) == TEXT
+    assert ["雨", "あめ", 0] in line["seg"] and ["が", None, 1] in line["seg"]
+    assert ["今日", "きょう", None] in line["seg"]                        # not in the word lists: not linked
+    assert other["lines"][0]["seg"] == [["雨", None, None]]               # no tokens: plain text

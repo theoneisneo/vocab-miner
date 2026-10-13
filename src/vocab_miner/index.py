@@ -160,6 +160,21 @@ class Index:
             "SELECT DISTINCT t.utt_id FROM tokens t JOIN utterances u ON u.id = t.utt_id "
             "WHERE t.key = ? ORDER BY u.source_id, u.doc_id, u.seq", (key,))]
 
+    def iter_utterances(self, source_ids: list[str] | None = None,
+                        doc_ids: list[str] | None = None) -> Iterator[Utterance]:
+        """All utterances (including no-stats ones) in corpus order."""
+        where, args = [], []
+        if source_ids:
+            where.append(f"source_id IN ({','.join('?' * len(source_ids))})")
+            args += source_ids
+        if doc_ids:
+            where.append(f"doc_id IN ({','.join('?' * len(doc_ids))})")
+            args += doc_ids
+        sql = (f"SELECT data FROM utterances {'WHERE ' + ' AND '.join(where) if where else ''} "
+               "ORDER BY source_id, doc_id, seq")
+        for (data,) in self.db.execute(sql, args).fetchall():
+            yield Utterance.from_dict(json.loads(data))
+
     def doc_titles(self) -> dict[tuple[str, str], str]:
         """(source_id, doc_id) -> display title, from a "title:<name>" tag if any, else the doc id."""
         titles: dict[tuple[str, str], str] = {}

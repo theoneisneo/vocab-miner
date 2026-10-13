@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sing-along</title>
+  <meta name="description" content="Read along with your own lyrics and subtitles: readings, romaji, translations and word glosses.">
+  <meta name="theme-color" content="#1d4ed8">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="topbar">
+    <button id="back" class="icon-btn" aria-label="返回" hidden>‹</button>
+    <h1 id="title">Sing-along</h1>
+    <button id="menu-btn" class="icon-btn" aria-label="選單" aria-haspopup="true">⋯</button>
+  </header>
+
+  <div id="menu" class="menu" hidden>
+    <button data-action="import">匯入資料檔…</button>
+    <button data-action="export-known">匯出已學會的詞</button>
+    <button data-action="import-known">匯入已學會的詞…</button>
+    <button data-action="clear" class="danger">清除本機資料</button>
+  </div>
+
+  <main id="view"></main>
+
+  <div id="sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-lemma">
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <div>
+          <div id="sheet-lemma" class="sheet-lemma"></div>
+          <div id="sheet-reading" class="sheet-reading"></div>
+        </div>
+        <button id="sheet-close" class="icon-btn" aria-label="關閉">✕</button>
+      </div>
+      <div id="sheet-meaning" class="sheet-meaning"></div>
+      <div id="sheet-ff" class="sheet-ff" hidden></div>
+      <div id="sheet-en" class="sheet-en"></div>
+      <div id="sheet-meta" class="sheet-meta"></div>
+      <button id="sheet-known" class="primary"></button>
+    </div>
+  </div>
+
+  <input id="file" type="file" accept=".json,application/json" hidden>
+  <input id="known-file" type="file" accept=".txt,text/plain" hidden>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

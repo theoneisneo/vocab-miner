@@ -156,6 +156,36 @@ def anki(
     typer.echo(f"{n} cards -> {path}")
 
 
+@app.command()
+def web(
+    source: Annotated[list[str] | None, typer.Option("--source", "-s", help="Only these source ids.")] = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Output path.")] = None,
+    root: RootOpt = None,
+):
+    """Write the data file for the sing-along web app (out/web/songs.json). Import it in the app on your phone."""
+    from .export.web import build_web_data, write_web_data
+
+    cfg = _config(root)
+    pipe = Pipeline(cfg)
+    try:
+        pipe.build(log=lambda m: None)
+        res = pipe.vocab(source, log=typer.echo)
+    except (ConfigError, ImportError) as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    with pipe.open_index() as idx:
+        utts = list(idx.iter_utterances(source))
+        tokens = {u.id: idx.tokens(u.id) for u in utts}
+        titles = idx.doc_titles()
+    romanizer = pipe.romanizer()
+    data = build_web_data(res.entries, res.grammar, utts, tokens, titles, cfg.get("target_lang", "ja"),
+                          getattr(romanizer, "romanize_tokens", None))
+    path = out or cfg.out_dir / "web" / "songs.json"
+    write_web_data(data, path)
+    typer.echo(f"{len(data['docs'])} docs, {len(utts)} lines, {len(data['words'])} words -> {path} "
+               f"({path.stat().st_size // 1024} KB)")
+
+
 @app.command(name="setup-dict")
 def setup_dict(root: RootOpt = None):
     """Download JMdict (English glosses, CC BY-SA 4.0) into .cache/dict/."""
