@@ -123,3 +123,56 @@ def test_web_data():
     assert ["雨", "あめ", 0] in line["seg"] and ["が", None, 1] in line["seg"]
     assert ["今日", "きょう", None] in line["seg"]                        # not in the word lists: not linked
     assert other["lines"][0]["seg"] == [["雨", None, None]]               # no tokens: plain text
+
+
+def test_anki_romaji_front(tmp_path):
+    pytest.importorskip("genanki")
+    from vocab_miner.export.anki import FIELDS, AnkiExporter
+
+    e = VocabEntry(lemma="雨", lang="ja", pos="NOUN", key="雨\tあめ", reading="あめ", romaji="ame", rank=1)
+    for flag, expected in ((True, "ame"), (False, "")):
+        out = tmp_path / f"{flag}.apkg"
+        AnkiExporter(romaji_front=flag).export([e], {}, out)
+        with zipfile.ZipFile(out) as z:
+            z.extract("collection.anki2", tmp_path / str(flag))
+        db = sqlite3.connect(tmp_path / str(flag) / "collection.anki2")
+        f = dict(zip(FIELDS, db.execute("SELECT flds FROM notes").fetchone()[0].split("\x1f"), strict=True))
+        assert f["FrontHint"] == expected and f["Romaji"] == "ame"
+
+
+def test_kana_units_and_deck(tmp_path):
+    pytest.importorskip("genanki")
+    from vocab_miner.export.kana import KanaDeckExporter, build_units, hiragana_units, katakana_units
+
+    h = hiragana_units()
+    assert sum(1 for _, s in h if s == 0) == 46                                # あ..ん incl. を
+    assert sum(1 for _, s in h if s == 1) == 26                                # 25 voiced + small tsu
+    yoon = {k for k, s in h if s == 2}
+    assert len(yoon) == 33 and {"きゃ", "しゅ", "ちょ", "ぴょ"} <= yoon and "かゃ" not in yoon
+    k = dict(katakana_units())
+    assert k["ア"] == 0 and k["ー"] == 1 and k["ティ"] == 2
+
+    texts = ["のののはは", "ティーカップ"]
+    entries = [VocabEntry(lemma="この", lang="ja", pos="DET", key="此の\tこの", reading="この", romaji="kono",
+                          gloss={"zh-Hant": "這個"}, rank=1),
+               VocabEntry(lemma="カップ", lang="ja", pos="NOUN", key="カップ\tかっぷ", reading="かっぷ",
+                          romaji="kappu", rank=2)]
+    units = build_units(texts, entries)
+    order = [u.kana for u in units]
+    assert order[:2] == ["の", "は"]                                         # most frequent basic kana first
+    assert order.index("ティ") > order.index("ー") > order.index("カ")       # stages within katakana
+    assert "きゃ" not in order                                                # unused combinations are skipped
+    no = next(u for u in units if u.kana == "の")
+    assert no.count == 3 and "こ<b>の</b>" in no.examples[0] and "這個" in no.examples[0]
+    assert next(u for u in units if u.kana == "っ").romaji == "（促音）"
+
+    out = tmp_path / "kana.apkg"
+    assert KanaDeckExporter().export(units, out) == len(units)
+    with zipfile.ZipFile(out) as z:
+        z.extract("collection.anki2", tmp_path)
+    db = sqlite3.connect(tmp_path / "collection.anki2")
+    import json
+    names = {d["name"] for d in json.loads(db.execute("SELECT decks FROM col").fetchone()[0]).values()}
+    assert {"五十音::平假名", "五十音::片假名"} <= names
+    ha = next(f for (f,) in db.execute("SELECT flds FROM notes") if f.split("\x1f")[1] == "は")
+    assert "wa" in ha.split("\x1f")[4]                                         # particle note on は

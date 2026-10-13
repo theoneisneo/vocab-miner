@@ -73,6 +73,11 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
    例句拼音與中譯、聽這一句的連結。新卡依學習順序出現，已學會的詞不放進去。
    卡片有固定的 ID，詞彙表更新後重新匯入只會更新內容，不會重複，也不會清掉複習紀錄。
 
+   - **拼音輔助模式**：還看不懂假名時，設定 `[anki] romaji_front = true`（或 `vm anki --romaji-front`），
+     卡片正面會同時顯示拼音。假名熟了之後關掉、重新匯出，正面就只剩日文，複習紀錄保留。
+   - **五十音牌組**：`uv run vm kana` → `out/kana.apkg`。平假名、片假名各一個子牌組，依「清音 → 濁音 → 拗音」分階段，
+     每個階段內依假名在你的素材裡出現的頻率排序；每張卡附上素材中含這個假名的常用詞。
+
 5. 跟唱網頁（手機可安裝的 PWA，程式在 `web/`）：
 
    ```bash
@@ -141,6 +146,7 @@ cp config.example.toml config.local.toml   # then list your material under [[sou
 uv run vm ingest                           # -> data/corpus/<source_id>.jsonl
 uv run vm vocab                            # -> out/vocab.csv, out/grammar.csv
 uv run vm anki                             # -> out/vocab.apkg (needs: uv sync --extra anki)
+uv run vm kana                             # -> out/kana.apkg: kana ordered by frequency in your material
 uv run vm web                              # -> out/web/songs.json for the sing-along app in web/
 ```
 

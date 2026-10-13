@@ -14,20 +14,23 @@ from ..model import Token, Utterance, VocabEntry
 from ..render import anki_furigana
 from .csv import media_link
 
-MODEL_NAME = "vocab-miner word v1"
+# v2 adds FrontHint (romaji on the front while kana are new). Toggling it only changes field content,
+# so re-importing updates notes in place.
+MODEL_NAME = "vocab-miner word v2"
 
 FIELDS = ["Key", "Word", "Reading", "Romaji", "POS", "Meaning", "English", "Warning",
-          "Example", "ExampleRomaji", "ExampleMeaning", "Link", "Source", "Rank"]
+          "Example", "ExampleRomaji", "ExampleMeaning", "Link", "Source", "Rank", "FrontHint"]
 
 FRONT = """
 <div class="word">{{Word}}</div>
 {{#Reading}}<div class="reading">{{Reading}}</div>{{/Reading}}
+{{#FrontHint}}<div class="front-hint">{{FrontHint}}</div>{{/FrontHint}}
 """
 
 BACK = """
 {{FrontSide}}
 <hr id="answer">
-<div class="romaji">{{Romaji}}</div>
+{{^FrontHint}}<div class="romaji">{{Romaji}}</div>{{/FrontHint}}
 <div class="meaning">{{Meaning}}</div>
 {{#Warning}}<div class="warning">⚠ {{Warning}}</div>{{/Warning}}
 <div class="pos">{{POS}}</div>
@@ -48,6 +51,8 @@ CSS = """
 .word { font-size: 2.4em; margin-top: .4em; }
 .reading { font-size: 1.1em; color: #666; }
 .romaji { font-size: .95em; color: #888; letter-spacing: .03em; }
+.front-hint { font-size: 1.2em; color: #2563eb; letter-spacing: .04em; margin-top: .2em; }
+.nightMode .front-hint, .night_mode .front-hint { color: #93c5fd; }
 .meaning { font-size: 1.3em; margin: .4em 0; }
 .warning { color: #b45309; margin: .3em 0; }
 .pos, .source { font-size: .75em; color: #888; }
@@ -68,14 +73,17 @@ def _stable_id(name: str) -> int:
 
 
 class AnkiExporter:
-    """Options: deck (deck name), limit (only the first N new words), include_known (default False)."""
+    """Options: deck (deck name), limit (only the first N new words), include_known (default False),
+    romaji_front (romaji on the front of the card, default False)."""
 
     def __init__(self, deck: str = "vocab-miner", limit: int | None = None, include_known: bool = False,
+                 romaji_front: bool = False,
                  romanize_tokens: Callable[[Sequence[Token]], str] | None = None):
         self.deck = deck
         self.limit = limit
         self.include_known = include_known
         self.romanize_tokens = romanize_tokens
+        self.romaji_front = romaji_front        # show romaji on the front (for learners who cannot read kana yet)
 
     def _model(self):
         import genanki
@@ -107,6 +115,7 @@ class AnkiExporter:
             html.escape(e.gloss.get("zh-Hant", "")), html.escape(e.gloss.get("en", "")),
             html.escape(e.false_friend or ""), example, ex_romaji, ex_meaning, link,
             html.escape("、".join(e.docs[:5])), str(e.rank),
+            html.escape(e.romaji or "") if self.romaji_front else "",
         ]
 
     def export(self, entries: Sequence[VocabEntry], utterances: Mapping[str, Utterance], out: Path,

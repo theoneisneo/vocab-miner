@@ -127,6 +127,8 @@ def anki(
     doc: Annotated[list[str] | None, typer.Option("--doc", "-d", help="Only these doc ids (e.g. one song).")] = None,
     limit: Annotated[int | None, typer.Option(help="Only the first N words (in learning order).")] = None,
     deck: Annotated[str | None, typer.Option(help="Deck name (default from [anki] deck).")] = None,
+    romaji_front: Annotated[bool | None, typer.Option(
+        "--romaji-front/--no-romaji-front", help="Romaji on the card front (default from [anki] romaji_front).")] = None,
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Output .apkg path.")] = None,
     root: RootOpt = None,
 ):
@@ -149,6 +151,7 @@ def anki(
     romanizer = pipe.romanizer()
     exporter = AnkiExporter(deck=deck or acfg.get("deck", "vocab-miner"), limit=limit or acfg.get("limit"),
                             include_known=acfg.get("include_known", False),
+                            romaji_front=acfg.get("romaji_front", False) if romaji_front is None else romaji_front,
                             romanize_tokens=getattr(romanizer, "romanize_tokens", None))
     suffix = "".join(f"_{d}" for d in (doc or []))
     path = out or cfg.out_dir / f"vocab{suffix}.apkg"
@@ -184,6 +187,35 @@ def web(
     write_web_data(data, path)
     typer.echo(f"{len(data['docs'])} docs, {len(utts)} lines, {len(data['words'])} words -> {path} "
                f"({path.stat().st_size // 1024} KB)")
+
+
+@app.command()
+def kana(
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Output .apkg path.")] = None,
+    root: RootOpt = None,
+):
+    """Kana deck (out/kana.apkg): hiragana and katakana ordered by frequency in your material, with example words."""
+    try:
+        from .export.kana import KanaDeckExporter, build_units
+    except ImportError:
+        typer.secho("needs genanki and the Japanese extras: uv sync --extra ja --extra anki", fg="red", err=True)
+        raise typer.Exit(1)
+
+    cfg = _config(root)
+    pipe = Pipeline(cfg)
+    try:
+        pipe.build(log=lambda m: None)
+        res = pipe.vocab(log=lambda m: None)
+    except (ConfigError, ImportError) as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    with pipe.open_index() as idx:
+        texts = [u.text for u in idx.iter_utterances() if NO_STATS_TAG not in u.tags]
+    units = build_units(texts, res.entries + res.grammar)
+    path = out or cfg.out_dir / "kana.apkg"
+    n = KanaDeckExporter().export(units, path)
+    hira = sum(u.script == "hiragana" for u in units)
+    typer.echo(f"{n} cards ({hira} hiragana, {n - hira} katakana) -> {path}")
 
 
 @app.command(name="setup-dict")

@@ -30,6 +30,7 @@ include_grammar = false
 deck = "vocab-miner"
 # limit = 300            # only the first N new words
 include_known = false
+romaji_front = false     # true while kana are still new: romaji on the card front
 
 [examples]
 per_entry = 3
