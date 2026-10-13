@@ -14,23 +14,24 @@ from ..model import Token, Utterance, VocabEntry
 from ..render import anki_furigana
 from .csv import media_link
 
-# v2 adds FrontHint (romaji on the front while kana are new). Toggling it only changes field content,
-# so re-importing updates notes in place.
-MODEL_NAME = "vocab-miner word v2"
+# v2 added FrontHint (romaji on the front while kana are new), v3 Speech/ExampleSpeech (text-to-speech).
+# Toggling FrontHint only changes field content, so re-importing updates notes in place.
+MODEL_NAME = "vocab-miner word v3"
 
 FIELDS = ["Key", "Word", "Reading", "Romaji", "POS", "Meaning", "English", "Warning",
-          "Example", "ExampleRomaji", "ExampleMeaning", "Link", "Source", "Rank", "FrontHint"]
+          "Example", "ExampleRomaji", "ExampleMeaning", "Link", "Source", "Rank", "FrontHint",
+          "Speech", "ExampleSpeech"]
 
 FRONT = """
 <div class="word">{{Word}}</div>
 {{#Reading}}<div class="reading">{{Reading}}</div>{{/Reading}}
-{{#FrontHint}}<div class="front-hint">{{FrontHint}}</div>{{/FrontHint}}
+{{#FrontHint}}<div class="front-hint">{{FrontHint}}</div>{{tts ja_JP:Speech}}{{/FrontHint}}
 """
 
 BACK = """
 {{FrontSide}}
 <hr id="answer">
-{{^FrontHint}}<div class="romaji">{{Romaji}}</div>{{/FrontHint}}
+{{^FrontHint}}<div class="romaji">{{Romaji}}</div>{{tts ja_JP:Speech}}{{/FrontHint}}
 <div class="meaning">{{Meaning}}</div>
 {{#Warning}}<div class="warning">⚠ {{Warning}}</div>{{/Warning}}
 <div class="pos">{{POS}}</div>
@@ -39,6 +40,7 @@ BACK = """
 <div class="example">{{furigana:Example}}</div>
 <div class="example-romaji">{{ExampleRomaji}}</div>
 <div class="example-meaning">{{ExampleMeaning}}</div>
+{{#ExampleSpeech}}{{tts ja_JP:ExampleSpeech}}{{/ExampleSpeech}}
 {{/Example}}
 {{#Link}}<div class="link">{{Link}}</div>{{/Link}}
 <div class="source">{{Source}}</div>
@@ -98,11 +100,13 @@ class AnkiExporter:
     def fields(self, e: VocabEntry, utterances: Mapping[str, Utterance],
                tokens: Mapping[str, list[Token]]) -> list[str]:
         ex = utterances.get(e.examples[0]) if e.examples else None
-        example = ex_romaji = ex_meaning = link = ""
+        example = ex_romaji = ex_meaning = link = ex_speech = ""
         if ex is not None:
             toks = tokens.get(ex.id, [])
             hl = {i for i, t in enumerate(toks) if t.key == e.key}
             example = anki_furigana(ex.text, toks, hl) if toks else html.escape(ex.text)
+            # speak the kana reading (corrected by the source's own readings) so the voice matches the song
+            ex_speech = html.escape("".join(t.reading or t.surface for t in toks) if toks else ex.text)
             ex_romaji = html.escape(self.romanize_tokens(toks)) if self.romanize_tokens and toks else ""
             ex_meaning = html.escape(ex.translations.get("zh-Hant", "") or next(iter(ex.translations.values()), ""))
             url = media_link(ex.media)
@@ -116,6 +120,7 @@ class AnkiExporter:
             html.escape(e.false_friend or ""), example, ex_romaji, ex_meaning, link,
             html.escape("、".join(e.docs[:5])), str(e.rank),
             html.escape(e.romaji or "") if self.romaji_front else "",
+            html.escape(e.reading or e.lemma), ex_speech,
         ]
 
     def export(self, entries: Sequence[VocabEntry], utterances: Mapping[str, Utterance], out: Path,

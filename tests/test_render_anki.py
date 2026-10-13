@@ -77,6 +77,7 @@ def test_anki_export(tmp_path):
     assert f["Example"] == "今日[きょう]、<b> 雨[あめ]</b>が 降[ふ]った"
     assert f["ExampleMeaning"] == "今天下雨了" and "t=61s" in f["Link"]
     assert f["Key"] == "雨|あめ"
+    assert f["Speech"] == "あめ" and f["ExampleSpeech"] == "きょう、あめがふった"    # kana, as sung
     kana_fields = dict(zip(FIELDS, rows[1][0].split("\x1f"), strict=True))
     assert kana_fields["Reading"] == ""                                        # reading equal to the word: hidden
 
@@ -159,9 +160,17 @@ def test_kana_units_and_deck(tmp_path):
                           romaji="kappu", rank=2)]
     units = build_units(texts, entries)
     order = [u.kana for u in units]
-    assert order[:2] == ["の", "は"]                                         # most frequent basic kana first
+    assert order[:6] == ["あ", "い", "う", "え", "お", "か"]                  # default: chart rows
     assert order.index("ティ") > order.index("ー") > order.index("カ")       # stages within katakana
     assert "きゃ" not in order                                                # unused combinations are skipped
+    by_freq = [u.kana for u in build_units(texts, entries, order="frequency")]
+    assert by_freq[:2] == ["の", "は"]                                       # most frequent basic kana first
+    with pytest.raises(ValueError):
+        build_units(texts, entries, order="random")
+    origin = {u.kana: u.origin for u in units}
+    assert "安" in origin["あ"] and "草書" in origin["あ"]
+    assert "伊" in origin["イ"] and "一部分" in origin["イ"]
+    assert "か" in origin["が"] and "濁點" in origin["が"] and "半濁點" in origin["ぱ"]
     no = next(u for u in units if u.kana == "の")
     assert no.count == 3 and "こ<b>の</b>" in no.examples[0] and "這個" in no.examples[0]
     assert next(u for u in units if u.kana == "っ").romaji == "（促音）"
@@ -174,5 +183,10 @@ def test_kana_units_and_deck(tmp_path):
     import json
     names = {d["name"] for d in json.loads(db.execute("SELECT decks FROM col").fetchone()[0]).values()}
     assert {"五十音::平假名", "五十音::片假名"} <= names
-    ha = next(f for (f,) in db.execute("SELECT flds FROM notes") if f.split("\x1f")[1] == "は")
-    assert "wa" in ha.split("\x1f")[4]                                         # particle note on は
+    from vocab_miner.export.kana import FIELDS as KFIELDS
+    notes = [dict(zip(KFIELDS, f.split("\x1f"), strict=True)) for (f,) in db.execute("SELECT flds FROM notes")]
+    ha = next(n for n in notes if n["Kana"] == "は")
+    assert "wa" in ha["Note"] and ha["Speech"] == "は"                         # particle note, spoken front
+    assert next(n for n in notes if n["Kana"] == "っ")["Speech"] == ""         # small tsu alone has no sound
+    models = json.loads(db.execute("SELECT models FROM col").fetchone()[0])
+    assert any("{{tts ja_JP:Speech}}" in t["qfmt"] for m in models.values() for t in m["tmpls"])
