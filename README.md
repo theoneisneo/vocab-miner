@@ -24,7 +24,8 @@
 需要 Python 3.12+ 與 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-uv sync
+uv sync --extra ja                        # 日文分詞（fugashi + UniDic）
+uv run vm setup-dict                      # 下載 JMdict 英文字典（約 10 MB，CC BY-SA 4.0），只需一次
 uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者）
 ```
 
@@ -51,6 +52,27 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
 
 - `no_stats_docs = ["<doc_id>", ...]`：這些單位不列入頻率統計，但仍可當例句（例如同一首歌的另一個版本）。
 - `add_tags = ["..."]`：替所有句子加上標籤（例如章節，用於劇透過濾）。
+
+3. 產生詞彙表：
+
+   ```bash
+   uv run vm vocab                # 全部素材 → out/vocab.csv（Excel 可直接開）
+   uv run vm vocab --doc <doc_id> # 只看一首歌／一個場景的詞，仍依全體頻率排序
+   ```
+
+   欄位：學習順序、原形、平假名讀音、拼音、詞性、中文／英文釋義、出現次數、出現在幾個單位、累積覆蓋率、
+   素材中的變化形、出現在哪些單位、⚠ 同形異義（漢字和中文相同但意思不同）、學習狀態、例句與中譯、聲音連結。
+
+詞彙表的細節：
+
+- **讀音校正**：素材本身附讀音時（例如歌詞的注音假名，`Utterance.reading_hint`），會用它校正分詞器的讀音，
+  所以歌詞特有的讀法（例如把「時間」唱成 とき）會照素材顯示。
+- **名詞保護**：字典不認得的自創名詞（角色名、地名）會被切碎。寫進 `data/names/<source_id>.txt`（一行一個）即可保護；
+  `uv run vm names <source_id>` 會列出被切碎的片假名候選。
+- **中文釋義**：開源的日中字典很少，所以中文釋義放在你自己的 `data/gloss/ja-zh.tsv`。
+  `uv run vm gloss-todo -o todo.tsv` 列出還沒有釋義的詞（照學習順序），填好 gloss 欄後用 `uv run vm gloss-import todo.tsv` 匯入。
+  匯入只會新增、不會覆蓋，所以你手動改過的釋義永遠不會被蓋掉。同形同音但詞性不同的詞，用 `pos` 欄區分。
+- **已學會的詞**：寫進 `data/known/ja.txt`（一行一個），詞彙表的 status 欄會標成 known；`ja.learning.txt` 標成 learning。
 
 ### 接上自己的素材
 
@@ -82,11 +104,19 @@ Everything is pluggable: sources, tokenizers (per language), romanizers, diction
 ### Quick start
 
 ```bash
-uv sync
+uv sync --extra ja
+uv run vm setup-dict                       # JMdict English glosses (one time, ~10 MB)
 cp config.example.toml config.local.toml   # then list your material under [[sources]]
 uv run vm ingest                           # -> data/corpus/<source_id>.jsonl
-uv run vm stats
+uv run vm vocab                            # -> out/vocab.csv
 ```
+
+The vocabulary list ranks lemmas by how many docs (songs, scenes) they appear in, then by count, with cumulative
+coverage, readings, Hepburn romaji, glosses (JMdict for English; your own editable TSV for other languages —
+`vm gloss-todo` / `vm gloss-import`), false-friend warnings for Chinese speakers, learning status from
+`data/known/<lang>.txt`, and an example sentence with translation and audio link. When a source ships its own
+readings (e.g. furigana), they correct the tokenizer's readings. Protect invented names with
+`data/names/<source_id>.txt` (`vm names <source_id>` suggests candidates).
 
 Built-in sources: `TextSource` (plain text), `SubtitleSource` / `LrcSource` / `SrtSource` / `VttSource` (timed text; a same-named audio file next to the subtitle is picked up as media). Any `[[sources]]` block also accepts `no_stats_docs` (keep out of frequency stats, still usable as examples) and `add_tags`.
 

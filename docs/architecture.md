@@ -31,7 +31,18 @@
 - `file` → CSV 給路徑；Anki 匯出用 ffmpeg 切出 `start..end` 的片段放進卡片。
 
 ### Token
-`surface`、`lemma`、`reading`（日文為平假名）、`pos`（UPOS）、`pos_native`、`start/end`（在 text 中的位置）、`is_proper`。
+`surface`、`lemma`、`reading`（日文為平假名）、`pos`（UPOS）、`pos_native`、`start/end`（在 text 中的位置）、`is_proper`、
+`base`、`lemma_reading`。
+
+- `lemma` + `lemma_reading` 決定一個詞彙條目（`Token.key`）；同一個詞的各種變化形會合併。
+- `reading` 是這個詞**在句中**的讀音，給注音假名用；`lemma_reading` 是原形的讀音，給詞彙表用。
+- `base` 是素材裡實際寫法的原形，用來顯示。日文的 UniDic 原形常是罕見漢字（為る、有る），`base` 則是 する、ある。
+- 日文分詞器會把可能形（会える）顯示成原形（会う），把古典サ變（信ずる）換成現代寫法（信じる）。
+
+### 讀音校正
+Source 提供 `reading_hint`（例如歌詞的注音假名）時，Index 建立時會用它校正 token 的讀音：
+假名必須逐字對上，漢字部分在所有可行切法中選「改動的詞最少、和原讀音編輯距離最小」的那一種；對不上就保留原讀音。
+只差清濁音的改動（連濁，例如 何気ない 的 気→げ）只改句中讀音，不改原形讀音。
 
 ## 2. 例句與聲音：為什麼在建表時才挑
 
@@ -86,13 +97,15 @@
 - 助詞照發音：は→wa、へ→e、を→o。
 - 候選實作：`cutlet`（建立在 fugashi 上，處理助詞和長音）。拼音規則做成 Romanizer 的設定。
 
-### 中文釋義的來源（待決定）
-開源的日中字典很少，可行的做法：
-1. 英文釋義用 JMdict（開源，CC BY-SA；字典檔在 setup 時下載，不放進 repo）。
-2. 中文釋義：
-   - (a) 用 LLM 依英文釋義＋例句產生精簡中譯，結果快取在 `data/gloss/ja-zh.tsv`，使用者可手動修改，修改過的不會被覆蓋。標示為機器產生。
-   - (b) 只留空白，讓使用者自己填。
-   - 漢字詞可以先顯示漢字讓使用者自行判斷，但 false_friend 清單要優先標示。
+### 釋義的來源
+多個 Dictionary 依序查詢，每種語言取第一個有結果的。
+1. 英文：JMdict（EDRDG，CC BY-SA 4.0）。字典檔用 `vm setup-dict` 下載，不放進 repo；第一次使用時轉成 `.cache/dict/jmdict.sqlite`。
+   查詢時優先：寫法相符 > 讀音相符 > 詞性相符 > 常用詞；只有讀音相同的同音詞不算。
+2. 中文：開源的日中字典很少，所以用使用者自己的 `data/gloss/ja-zh.tsv`（`lemma, reading, gloss, origin, pos`）。
+   - `vm gloss-todo` 依學習順序列出還沒有釋義的詞（含英文釋義和例句當參考），可交給 LLM 或自己填，再用 `vm gloss-import` 匯入。
+   - LLM 產生的草稿標為 `origin=machine`。匯入只新增、從不覆蓋，所以使用者改過的釋義不會被蓋掉。
+   - `pos`（UPOS，選填）用來區分同形同音但詞性不同的詞（例如助動詞 ない 和形容詞 ない）。
+3. 同形異義（false friend）：漢字和中文相同但意思不同的詞，清單在 `src/vocab_miner/data/false_friends_ja_zh.tsv`，在詞彙表裡用 ⚠ 標示。
 
 ## 4. 進度與指標（M4）
 

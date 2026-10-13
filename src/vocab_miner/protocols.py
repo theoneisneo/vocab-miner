@@ -36,7 +36,8 @@ class Dictionary(Protocol):
     """lemma (+reading, pos) -> glosses per target language."""
     lang: str
 
-    def lookup(self, lemma: str, reading: str | None = None, pos: str | None = None) -> Mapping[str, str]: ...
+    def lookup(self, lemma: str, reading: str | None = None, pos: str | None = None,
+               base: str | None = None) -> Mapping[str, str]: ...
 
 
 @runtime_checkable

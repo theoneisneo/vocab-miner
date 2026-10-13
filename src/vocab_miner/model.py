@@ -46,20 +46,29 @@ class Utterance:
 @dataclass(frozen=True)
 class Token:
     surface: str
-    lemma: str
-    reading: str | None           # ja: hiragana
+    lemma: str                    # dictionary lemma; with lemma_reading it identifies a vocabulary entry
+    reading: str | None           # reading of the surface form (ja: hiragana), for ruby/furigana
     pos: str                      # Universal POS (NOUN, VERB, ADP, ...)
     pos_native: str               # language-specific POS, e.g. UniDic "名詞-普通名詞-一般"
     start: int
     end: int
     is_proper: bool = False
+    base: str | None = None       # base form as written in the text (ja: する rather than 為る); display form
+    lemma_reading: str | None = None
+
+    @property
+    def key(self) -> str:
+        """Identity of the vocabulary entry this token belongs to."""
+        return f"{self.lemma}	{self.lemma_reading or ''}"
 
 
 @dataclass
 class VocabEntry:
-    lemma: str
+    lemma: str                     # display form (most common written base form)
     lang: str
-    pos: str
+    pos: str                       # UPOS
+    key: str = ""                  # Token.key of the grouped tokens
+    pos_label: str | None = None   # learner-facing POS name, language specific
     reading: str | None = None
     romaji: str | None = None
     gloss: dict[str, str] = field(default_factory=dict)   # {"zh-Hant": ..., "en": ...}

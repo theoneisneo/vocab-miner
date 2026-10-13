@@ -2,19 +2,42 @@
 
 data_dir = "data"
 out_dir = "out"
+cache_dir = ".cache"
 target_lang = "ja"
 gloss_langs = ["zh-Hant", "en"]
 
 [tokenizer]
 plugin = "vocab_miner.tokenizers.ja:JapaneseTokenizer"
+# Protected names per source: data/names/<source_id>.txt (one per line). `vm names <source_id>` suggests some.
 
 [romanizer]
 plugin = "vocab_miner.tokenizers.ja:HepburnRomanizer"
-macrons = false          # とうきょう -> toukyou
+macrons = false          # toukyou rather than tōkyō, so romaji maps one-to-one onto kana
+
+[ranker]
+plugin = "vocab_miner.rankers:FrequencyRanker"
+by = "doc_freq"          # doc_freq (found in most songs/scenes first) or count
+
+[vocab]
+exclude_pos = ["PUNCT", "SYM", "NUM", "X"]
+include_proper = false   # proper nouns (names) are left out by default
+min_count = 1
 
 [examples]
 per_entry = 3
 exclude_tags = ["spoiler"]
+
+# Glosses: the first dictionary that has a gloss for a language wins.
+# JMdict (English) needs a one-time `uv run vm setup-dict`.
+# The TSV is yours to edit; `vm gloss-todo` lists words without a gloss, `vm gloss-import` appends drafts.
+[[dictionaries]]
+plugin = "vocab_miner.dictionaries.tsv:TsvGlossDictionary"
+path = "data/gloss/ja-zh.tsv"
+gloss_lang = "zh-Hant"
+
+[[dictionaries]]
+plugin = "vocab_miner.dictionaries.jmdict:JMdictDictionary"
+path = ".cache/dict/JMdict_e.gz"
 
 # One [[sources]] block per material. Public sources shown; private ones use private.sources.xxx:Class
 [[sources]]
@@ -22,7 +45,6 @@ id = "demo/text"
 plugin = "vocab_miner.sources.text:TextSource"
 path = "tests/fixtures/ja_sample.txt"
 lang = "ja"
-
 split = "line"            # line / paragraph / sentence
 
 # [[sources]]
