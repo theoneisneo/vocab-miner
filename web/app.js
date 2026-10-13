@@ -143,6 +143,8 @@ function renderHome() {
   const knownCount = data.words.filter((w) => !w.grammar && isKnown(w)).length;
   view.append(el("p", { class: "section-title" },
     `已學會 ${knownCount} / ${data.words.filter((w) => !w.grammar).length} 個詞 · 資料產生於 ${data.generated.slice(0, 10)}`));
+  view.append(el("div", { class: "home-actions" },
+    el("button", { class: "secondary", onclick: () => $("#file").click() }, "更新資料（匯入新的 songs.json）")));
 }
 
 // ---------- song ----------
@@ -380,7 +382,8 @@ $("#file").addEventListener("change", async (ev) => {
   ev.target.value = "";
   if (!f) return;
   try {
-    const d = JSON.parse(await f.text());
+    let d;
+    try { d = JSON.parse(await f.text()); } catch { throw new Error(`「${f.name}」不是 JSON 檔`); }
     if (d.format !== "vocab-miner-web" || d.version !== 1) throw new Error("不是 vocab-miner 的資料檔（或版本不符）");
     await kvSet("data", d);
     data = d;

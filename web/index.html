@@ -44,8 +44,10 @@
     </div>
   </div>
 
-  <input id="file" type="file" accept=".json,application/json" hidden>
-  <input id="known-file" type="file" accept=".txt,text/plain" hidden>
+  <!-- no accept filter: Android often labels downloaded .json/.txt files with an unknown type and greys them out;
+       the content is checked after picking instead -->
+  <input id="file" type="file" hidden>
+  <input id="known-file" type="file" hidden>
   <div id="toast" class="toast" hidden></div>
 
   <script src="app.js"></script>
