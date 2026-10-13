@@ -111,9 +111,11 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
 
 遊戲素材可以從遊戲本身的文字取得，或錄下自己的遊玩過程再用 Whisper 轉寫。
 
-### 版權
+### 授權與版權
 
-你必須有權使用自己放進來的素材。本 repo 不包含任何第三方文字；由素材產生的語料、詞彙表和卡片只存在本機的 `data/` 與 `out/`，不會進版控。
+- 程式碼以 [MIT 授權](LICENSE) 釋出。
+- 你必須有權使用自己放進來的素材。本 repo 不包含任何第三方文字；由素材產生的語料、詞彙表和卡片只存在本機的 `data/` 與 `out/`，不會進版控。
+- 英文釋義來自 [JMdict](https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary_Project)（© Electronic Dictionary Research and Development Group，[CC BY-SA 4.0](https://www.edrdg.org/edrdg/licence.html)）。字典檔由 `vm setup-dict` 下載，不包含在本 repo。若你**公開分享**含有這些英文釋義的詞彙表或 Anki 牌組，需標註 JMdict 出處並以相同授權分享；自己使用則不受影響。
 
 ---
 
@@ -159,3 +161,7 @@ Built-in sources: `TextSource` (plain text), `SubtitleSource` / `LrcSource` / `S
 The `Utterance` JSONL format is the public contract — produce it any way you like and the rest of the pipeline works. Custom sources are plain classes loaded by `"module.path:ClassName"`. See [docs/architecture.md](docs/architecture.md).
 
 You are responsible for having the right to use the material you feed in. This repository ships no third-party text.
+
+Code: [MIT](LICENSE). English glosses come from [JMdict](https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary_Project)
+(© EDRDG, [CC BY-SA 4.0](https://www.edrdg.org/edrdg/licence.html)), downloaded by `vm setup-dict` and not included here;
+if you share vocabulary lists or decks containing them, credit JMdict and share them under the same license.

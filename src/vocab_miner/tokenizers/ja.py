@@ -61,6 +61,27 @@ def _clean_lemma(lemma: str) -> str:
     return lemma.split("-", 1)[0] if "-" in lemma and not lemma.startswith("-") else lemma
 
 
+def _te_auxiliaries(tokens: list[Token]) -> list[Token]:
+    """Verbs (and ほしい) used as auxiliaries after the te-form become grammar entries named after the pattern.
+
+    見ている -> 〜ている, 食べてしまう -> 〜てしまう, 来てほしい -> 〜てほしい. The plain verb (猫がいる) stays a
+    vocabulary word. Surface and reading are unchanged, so furigana and romaji are not affected.
+    """
+    out = list(tokens)
+    for i in range(1, len(out)):
+        t, prev = out[i], out[i - 1]
+        if (t.pos_native.startswith(("動詞-非自立可能", "形容詞-非自立可能"))
+                and prev.pos_native.startswith("助詞-接続助詞") and prev.surface in ("て", "で")
+                and prev.end == t.start):
+            # named in kana and with て also after で: 読んでみる / 見て見る -> 〜てみる, 行く / いく -> 〜ていく
+            base = t.base or t.lemma
+            kana = base if KANA_ONLY.fullmatch(base) else (t.lemma_reading or kata_to_hira(base))   # いい, not よい
+            out[i] = Token(**{**t.__dict__, "lemma": f"〜て{kana}", "base": f"〜て{kana}",
+                              "lemma_reading": f"て{kana}", "pos": "AUX",
+                              "pos_native": "補助動詞-" + t.pos_native})
+    return out
+
+
 def _modern_lemma(lemma: str, base: str, lemma_reading: str | None, surface: str) -> tuple[str, str, str | None]:
     """Learner-friendly dictionary forms.
 
@@ -79,7 +100,7 @@ def _modern_lemma(lemma: str, base: str, lemma_reading: str | None, surface: str
 
 class JapaneseTokenizer:
     lang = "ja"
-    version = "4"           # bump when tokenization or reading alignment changes, so indexes get rebuilt
+    version = "7"           # bump when tokenization or reading alignment changes, so indexes get rebuilt
     word_pattern = WORD
 
     def __init__(self, names: Iterable[str] = ()):
@@ -99,7 +120,7 @@ class JapaneseTokenizer:
 
     def tokenize(self, text: str) -> list[Token]:
         if not self._names_re:
-            return self._tag(text, 0)
+            return _te_auxiliaries(self._tag(text, 0))
         out: list[Token] = []
         pos = 0
         for m in self._names_re.finditer(text):
@@ -111,7 +132,7 @@ class JapaneseTokenizer:
                              base=name, lemma_reading=reading))
             pos = m.end()
         out += self._tag(text[pos:], pos)
-        return out
+        return _te_auxiliaries(out)
 
     def _tag(self, text: str, offset: int) -> list[Token]:
         tokens: list[Token] = []
@@ -356,7 +377,8 @@ class HepburnRomanizer:
             r = self.romanize_token(t)
             if out and out[-1].endswith("'") and r[:1].isalpha() and r[0] not in "aeiou":
                 out[-1] = out[-1][:-1] + ("t" if r.startswith("ch") else r[0])   # small tsu across tokens
-            attach = out and (t.pos == "AUX" or t.pos_native.startswith(("助詞-接続助詞", "接尾辞")))
+            attach = out and not t.pos_native.startswith("補助動詞") and (
+                t.pos == "AUX" or t.pos_native.startswith(("助詞-接続助詞", "接尾辞")))
             if attach:
                 out[-1] += r
             else:

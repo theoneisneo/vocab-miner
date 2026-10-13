@@ -3,6 +3,7 @@ name = "vocab-miner"
 version = "0.0.1"
 description = "Build frequency-ranked vocabulary lists and example-sentence cards from the media you are actually consuming."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "typer>=0.12",

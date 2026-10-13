@@ -125,3 +125,15 @@ def test_align_skips_digits_and_punctuation(tok):
     ts = tok.tokenize("2人で、行く！")
     out = align_readings(ts, "ふたりでいく")
     assert next(t for t in out if t.surface == "2").reading is None
+
+
+def test_te_form_auxiliaries_become_grammar_patterns(tok):
+    plain = [t for t in tok.tokenize("猫がいる") if t.lemma_reading == "いる"]
+    assert plain and plain[0].pos == "VERB"                       # 'to be' stays a vocabulary word
+    aux = {t.surface: t for t in tok.tokenize("見ている") if t.pos == "AUX"}
+    assert aux["いる"].lemma == "〜ている" and aux["いる"].lemma_reading == "ている"
+    assert aux["いる"].reading == "いる"                          # surface reading unchanged (furigana)
+    assert {t.lemma for t in tok.tokenize("読んでみる") if t.pos == "AUX"} == {"〜てみる"}   # で -> named with て
+    assert {t.lemma for t in tok.tokenize("見て見る") if t.pos == "AUX"} == {"〜てみる"}     # kana name
+    assert {t.lemma for t in tok.tokenize("来ていい") if t.pos == "AUX"} == {"〜ていい"}
+    assert HepburnRomanizer().romanize_tokens(tok.tokenize("食べてしまった")) == "tabete shimatta"
