@@ -128,3 +128,16 @@ def test_cli_ingest_and_stats(tmp_path):
     assert res.exit_code == 0 and "demo/text.jsonl" in res.output
     res = runner.invoke(app, ["ingest", "nope", "--root", str(root)])
     assert res.exit_code == 1
+
+
+def test_demo_project_runs(tmp_path):
+    """examples/demo is the tutorial's project: it must keep working."""
+    demo = Path(__file__).parent.parent / "examples" / "demo"
+    root = tmp_path / "demo"
+    shutil.copytree(demo, root, ignore=shutil.ignore_patterns("data", "out", ".cache"))
+    runner = CliRunner()
+    res = runner.invoke(app, ["ingest", "--root", str(root)])
+    assert res.exit_code == 0, res.output
+    assert "demo/songs: 8 utterances" in res.output and "demo/scenes: 4 utterances" in res.output
+    us = list(read_jsonl(root / "data" / "corpus" / "demo" / "songs.jsonl"))
+    assert all(u.translations.get("zh-Hant") for u in us)

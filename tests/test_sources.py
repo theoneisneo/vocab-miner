@@ -81,10 +81,15 @@ def test_parse_lrc_offset():
 
 
 def test_lrc_source_skips_empty_lines():
-    us = list(LrcSource("songs/demo", SUBS, "ja").utterances())
+    us = list(LrcSource("songs/demo", SUBS / "sample.lrc", "ja").utterances())
     assert len(us) == 5                                         # the empty [00:12.00] line is dropped
     assert {u.doc_id for u in us} == {"sample"}
     assert all(u.media is None for u in us)
+
+
+def test_directory_skips_translation_files():
+    docs = {u.doc_id for u in LrcSource("songs/demo", SUBS, "ja").utterances()}
+    assert docs == {"sample", "bilingual"}                       # sample.zh-Hant.lrc is not a doc
 
 
 def test_srt_source():
@@ -102,10 +107,48 @@ def test_vtt_source_with_youtube():
 
 
 def test_subtitle_source_reads_all_kinds_and_finds_local_audio(tmp_path):
-    for f in SUBS.iterdir():
+    for f in SUBS.glob("sample.*"):
         (tmp_path / f.name).write_bytes(f.read_bytes())
     (tmp_path / "sample.mp3").write_bytes(b"")
     us = list(SubtitleSource("s", tmp_path, "ja").utterances())
     assert len(us) == 5 + 2 + 2
     lrc = [u for u in us if u.media and u.media.kind == "file"]
     assert lrc and all(Path(u.media.uri).name == "sample.mp3" for u in lrc)
+
+
+# ---------- bilingual subtitles ----------
+
+def test_translation_last_line():
+    us = list(SrtSource("s", SUBS / "bilingual.srt", "ja", translations={"zh-Hant": "last-line"}).utterances())
+    assert [u.text for u in us] == ["今日は朝から雨が降っている。", "駅まで歩いた。", "♪"]
+    assert [u.translations for u in us] == [{"zh-Hant": "今天從早上就在下雨。"}, {"zh-Hant": "走到了車站。"}, {}]
+    # without the option both lines are one utterance
+    plain = list(SrtSource("s", SUBS / "bilingual.srt", "ja").utterances())
+    assert plain[0].text == "今日は朝から雨が降っている。今天從早上就在下雨。" and not plain[0].translations
+
+
+def test_translation_same_time():
+    us = list(LrcSource("s", SUBS / "bilingual.lrc", "ja", translations={"zh-Hant": "same-time"},
+                        youtube={"bilingual": "VID"}).utterances())
+    assert [u.text for u in us] == ["窓の外の街はまだ静かだった。", "友達に会うのは久しぶりだ。", "明日もまた会おう。"]
+    assert us[0].translations == {"zh-Hant": "窗外的街道還很安靜。"} and us[2].translations == {}
+    assert (us[0].media.start, us[0].media.end) == (1.0, 5.0)    # ends at the next original line
+    assert [u.seq for u in us] == [1, 2, 3]
+
+
+def test_translation_sidecar_file_matched_by_time():
+    us = list(LrcSource("s", SUBS / "sample.lrc", "ja", translations={"zh-Hant": "file"}).utterances())
+    tr = [u.translations.get("zh-Hant") for u in us]
+    # 1.0 exact, 4.5 ~ 4.55, 8.25 ~ 8.2, 14.0 exact, 20.0 ~ 20.1
+    assert tr == ["今天從早上就在下雨。", "走路去車站，搭上了電車。", "窗外的街道還很安靜。",
+                  "好久沒見到朋友了。", "窗外的街道還很安靜。"]
+
+
+def test_translation_sidecar_missing_is_fine():
+    us = list(VttSource("s", SUBS / "sample.vtt", "ja", translations={"en": "file"}).utterances())
+    assert all(not u.translations for u in us)
+
+
+def test_translation_layout_validated():
+    with pytest.raises(ValueError):
+        SrtSource("s", SUBS, "ja", translations={"zh-Hant": "below"})

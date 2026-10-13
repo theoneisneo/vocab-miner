@@ -3,6 +3,8 @@
 Media: if an audio/video file with the same stem sits next to the subtitle file (song.lrc + song.mp3),
 each utterance gets a MediaRef(kind="file") with its start/end. Otherwise a YouTube id can be given per doc
 with the `youtube` option: { "<doc_id>" = "<video id>" }.
+
+Translations: bilingual material is supported with the `translations` option (see SubtitleSource).
 """
 from __future__ import annotations
 
@@ -94,14 +96,27 @@ PARSERS = {".lrc": parse_lrc, ".srt": parse_srt, ".vtt": parse_vtt}
 
 
 class SubtitleSource:
+    """Options:
+    youtube       {doc_id: video id} when there is no local audio next to the file
+    translations  {lang: layout} for bilingual material, layout one of
+                  "last-line"  the last line of each cue is the translation (bilingual .srt/.vtt)
+                  "same-time"  a cue with the same start time right after the original (bilingual .lrc)
+                  "file"       a separate file song.<lang>.lrc / .srt / .vtt next to song.lrc, matched by time
+    """
+
     suffixes: tuple[str, ...] = tuple(PARSERS)
 
     def __init__(self, source_id: str, path: str | Path, lang: str,
-                 youtube: dict[str, str] | None = None, control_codes: bool = True):
+                 youtube: dict[str, str] | None = None, translations: dict[str, str] | None = None,
+                 control_codes: bool = True):
         self.source_id = source_id
         self.path = Path(path)
         self.lang = lang
         self.youtube = youtube or {}
+        self.translations = translations or {}
+        bad = {m for m in self.translations.values() if m not in LAYOUTS}
+        if bad:
+            raise ValueError(f"translation layout must be one of {sorted(LAYOUTS)}, got {sorted(bad)}")
         self.control_codes = control_codes
 
     @staticmethod
@@ -119,18 +134,84 @@ class SubtitleSource:
             return MediaRef(kind="youtube", uri=self.youtube[doc_id], start=cue.start, end=cue.end)
         return None
 
+    def _clean(self, text: str) -> str:
+        return clean(text, control_codes=self.control_codes)
+
+    def _cues(self, file: Path) -> list[Cue]:
+        return PARSERS[file.suffix.lower()](read_text(file))
+
+    def _with_translations(self, file: Path, cues: list[Cue]) -> list[tuple[Cue, dict[str, str]]]:
+        """Pair each original cue with its translations according to the configured layouts."""
+        inline = [lang for lang, m in self.translations.items() if m == "last-line"]
+        same_time = [lang for lang, m in self.translations.items() if m == "same-time"]
+        out: list[tuple[Cue, dict[str, str]]] = []
+        i = 0
+        while i < len(cues):
+            cue, tr = cues[i], {}
+            if inline:
+                lines = [ln for ln in cue.text.split("\n") if ln.strip()]
+                if len(lines) > len(inline):
+                    for lang, line in zip(reversed(inline), reversed(lines[-len(inline):]), strict=True):
+                        tr[lang] = self._clean(line)
+                    cue = Cue(cue.start, cue.end, "\n".join(lines[:-len(inline)]))
+            i += 1
+            for lang in same_time:                   # following cues at the same time are translations
+                if i < len(cues) and cues[i].start == cue.start and cue.start is not None:
+                    tr[lang] = self._clean(cues[i].text)
+                    i += 1
+            if same_time and i < len(cues) and cues[i].start is not None and cues[i].start > (cue.start or 0):
+                cue = Cue(cue.start, cues[i].start, cue.text)   # end at the next original line, not its translation
+            out.append((cue, tr))
+        for lang, layout in self.translations.items():
+            if layout == "file" and (side := self._sidecar(file, lang)) is not None:
+                _attach_by_time(out, [c for c in self._cues(side) if self._clean(c.text)], lang, self._clean)
+        return out
+
+    @staticmethod
+    def _sidecar(file: Path, lang: str) -> Path | None:
+        for suf in (file.suffix, *PARSERS):
+            cand = file.with_name(f"{file.stem}.{lang}{suf}")
+            if cand.is_file():
+                return cand
+        return None
+
     def utterances(self) -> Iterator[Utterance]:
         for doc_id, file in iter_files(self.path, self.suffixes):
-            cues = PARSERS[file.suffix.lower()](read_text(file))
+            if SIDECAR.search(file.stem):
+                continue                             # song.zh-Hant.lrc is a translation, not a doc of its own
             seq = 0
-            for cue in cues:
-                text = clean(cue.text, control_codes=self.control_codes)
+            for cue, tr in self._with_translations(file, self._cues(file)):
+                text = self._clean(cue.text)
                 if not text:
                     continue
                 seq += 1
                 yield Utterance(id=f"{self.source_id}:{doc_id}:{seq}", source_id=self.source_id,
                                 doc_id=doc_id, seq=seq, lang=self.lang, text=text,
+                                translations={k: v for k, v in tr.items() if v},
                                 media=self._media(doc_id, file, cue))
+
+
+LAYOUTS = {"last-line", "same-time", "file"}
+# "song.zh-Hant" / "song.en": a stem ending in a BCP-47-like tag marks a translation file
+SIDECAR = re.compile(r"\.[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$")
+
+
+def _attach_by_time(pairs: list[tuple[Cue, dict[str, str]]], side: list[Cue], lang: str, clean_fn) -> None:
+    """Match translation cues to original cues by start time (within 0.3 s), or by position if counts agree."""
+    originals = [p for p in pairs if clean_fn(p[0].text)]
+    by_time = {round(c.start, 1): c for c in side if c.start is not None}
+    matched = 0
+    for cue, tr in originals:
+        if cue.start is None:
+            continue
+        keys = (round(cue.start + off, 1) for off in (0, -.1, .1, -.2, .2, -.3, .3))
+        hit = next((by_time[k] for k in keys if k in by_time), None)
+        if hit is not None:
+            tr[lang] = clean_fn(hit.text)
+            matched += 1
+    if matched == 0 and len(side) == len(originals):
+        for (_, tr), c in zip(originals, side, strict=True):
+            tr[lang] = clean_fn(c.text)
 
 
 class LrcSource(SubtitleSource):

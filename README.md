@@ -31,6 +31,9 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
 
 ### 使用方式
 
+**第一次使用？** 請看 [入門教學](docs/getting-started.md)，用附的範例專案走一遍完整流程。
+
+
 1. 複製 `config.example.toml` 為 `config.local.toml`（不進版控），在 `[[sources]]` 填入你的素材。
 2. 產生語料：
 
@@ -45,7 +48,7 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
 | plugin | 用途 | 主要選項 |
 |---|---|---|
 | `vocab_miner.sources.text:TextSource` | 純文字 `.txt`（單檔或資料夾） | `split = "line"`／`"paragraph"`／`"sentence"` |
-| `vocab_miner.sources.subtitle:SubtitleSource` | `.lrc`／`.srt`／`.vtt` | 同名音檔（`song.lrc` + `song.mp3`）會自動當成聲音；`youtube = { "<doc_id>" = "<影片 ID>" }` |
+| `vocab_miner.sources.subtitle:SubtitleSource` | `.lrc`／`.srt`／`.vtt` | 同名音檔（`song.lrc` + `song.mp3`）會自動當成聲音；`youtube = { "<doc_id>" = "<影片 ID>" }`；雙語字幕 `translations = { "zh-Hant" = "file" / "last-line" / "same-time" }` |
 | `LrcSource`／`SrtSource`／`VttSource` | 同上，只讀單一格式 | |
 
 每個 `[[sources]]` 都可以加上框架層級的選項：
@@ -138,6 +141,9 @@ Everything is pluggable: sources, tokenizers (per language), romanizers, diction
 **Status:** early development. Japanese first; designed for multiple languages.
 
 ### Quick start
+
+A step-by-step walkthrough with a runnable example project (in Traditional Chinese): [docs/getting-started.md](docs/getting-started.md).
+
 
 ```bash
 uv sync --extra ja

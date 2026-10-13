@@ -62,6 +62,7 @@ split = "line"            # line / paragraph / sentence
 # path = "data/raw/subs/"      # .lrc / .srt / .vtt; song.mp3 next to song.lrc is used as media
 # lang = "ja"
 # youtube = { "some-song" = "VIDEO_ID" }   # optional, per doc_id, when there is no local audio
+# translations = { "zh-Hant" = "file" }   # song.zh-Hant.lrc next to song.lrc; or "last-line" / "same-time"
 #
 # Framework options accepted by every source:
 # no_stats_docs = ["some-song-live"]       # leave out of frequency stats, still usable as examples

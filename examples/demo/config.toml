@@ -1,0 +1,38 @@
+# Demo project: run every command with --root examples/demo (see docs/getting-started.md).
+# All lyrics in this folder were written for this demo.
+
+data_dir = "data"          # examples/demo/data  (corpus, glosses, known words; gitignored)
+out_dir = "out"            # examples/demo/out   (vocabulary list, decks, web data; gitignored)
+target_lang = "ja"
+gloss_langs = ["zh-Hant", "en"]
+
+[anki]
+deck = "Demo"
+romaji_front = true        # romaji on the card front while kana are new
+
+# Share the repository's JMdict download instead of fetching it again for the demo
+[[dictionaries]]
+plugin = "vocab_miner.dictionaries.tsv:TsvGlossDictionary"
+path = "data/gloss/ja-zh.tsv"
+gloss_lang = "zh-Hant"
+
+[[dictionaries]]
+plugin = "vocab_miner.dictionaries.jmdict:JMdictDictionary"
+path = "../../.cache/dict/JMdict_e.gz"
+
+# A song as .lrc with its translation in a separate file: lyrics/morning.zh-Hant.lrc
+[[sources]]
+id = "demo/songs"
+plugin = "vocab_miner.sources.subtitle:SubtitleSource"
+path = "lyrics"
+lang = "ja"
+translations = { "zh-Hant" = "file" }
+# youtube = { "morning" = "VIDEO_ID" }     # link a video to get "tap a line to play"
+
+# A bilingual subtitle file: the last line of each cue is the translation
+[[sources]]
+id = "demo/scenes"
+plugin = "vocab_miner.sources.subtitle:SubtitleSource"
+path = "scenes"
+lang = "ja"
+translations = { "zh-Hant" = "last-line" }
