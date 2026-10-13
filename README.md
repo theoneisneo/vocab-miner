@@ -56,7 +56,7 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
 3. 產生詞彙表：
 
    ```bash
-   uv run vm vocab                # 全部素材 → out/vocab.csv（Excel 可直接開）
+   uv run vm vocab                # 全部素材 → out/vocab.csv（實詞）＋ out/grammar.csv（助詞、助動詞）
    uv run vm vocab --doc <doc_id> # 只看一首歌／一個場景的詞，仍依全體頻率排序
    ```
 
@@ -72,6 +72,8 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
 - **中文釋義**：開源的日中字典很少，所以中文釋義放在你自己的 `data/gloss/ja-zh.tsv`。
   `uv run vm gloss-todo -o todo.tsv` 列出還沒有釋義的詞（照學習順序），填好 gloss 欄後用 `uv run vm gloss-import todo.tsv` 匯入。
   匯入只會新增、不會覆蓋，所以你手動改過的釋義永遠不會被蓋掉。同形同音但詞性不同的詞，用 `pos` 欄區分。
+- **文法詞分開**：助詞（の、は、が…）和助動詞（だ、た、ない…）適合從例句學，不適合做單字卡，
+  所以預設另外輸出到 `out/grammar.csv`，詞彙表與覆蓋率只算實詞。設定 `[vocab] include_grammar = true` 可合併。
 - **已學會的詞**：寫進 `data/known/ja.txt`（一行一個），詞彙表的 status 欄會標成 known；`ja.learning.txt` 標成 learning。
 
 ### 接上自己的素材
@@ -111,7 +113,7 @@ uv run vm ingest                           # -> data/corpus/<source_id>.jsonl
 uv run vm vocab                            # -> out/vocab.csv
 ```
 
-The vocabulary list ranks lemmas by how many docs (songs, scenes) they appear in, then by count, with cumulative
+Particles and auxiliaries go to a separate `out/grammar.csv` by default. The vocabulary list ranks lemmas by how many docs (songs, scenes) they appear in, then by count, with cumulative
 coverage, readings, Hepburn romaji, glosses (JMdict for English; your own editable TSV for other languages —
 `vm gloss-todo` / `vm gloss-import`), false-friend warnings for Chinese speakers, learning status from
 `data/known/<lang>.txt`, and an example sentence with translation and audio link. When a source ships its own

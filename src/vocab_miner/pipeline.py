@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from .index import Index, build_index
 from .model import Utterance, VocabEntry
 from .vocab import (
     DEFAULT_EXCLUDE_POS,
+    DEFAULT_GRAMMAR_POS,
     VocabOptions,
     add_coverage,
     apply_false_friends,
@@ -26,6 +28,13 @@ DEFAULT_DICTIONARIES = [
      "gloss_lang": "zh-Hant"},
 ]
 PATH_KEYS = ("path",)
+
+
+@dataclass
+class VocabResult:
+    entries: list[VocabEntry]          # content words, in learning order
+    grammar: list[VocabEntry]          # particles, auxiliaries ... (empty with include_grammar = true)
+    utterances: dict[str, Utterance]   # example sentences referenced by either list
 
 
 def instantiate(block: dict[str, Any] | None, config: Config, default: str | None = None, **extra):
@@ -105,36 +114,47 @@ class Pipeline:
         return instantiate(self.config.get("romanizer"), self.config, "vocab_miner.tokenizers.ja:HepburnRomanizer")
 
     def vocab(self, source_ids: list[str] | None = None, doc_ids: list[str] | None = None,
-              log: Callable[[str], None] = print) -> tuple[list[VocabEntry], dict[str, Utterance]]:
+              log: Callable[[str], None] = print) -> VocabResult:
+        """Content words go to `entries`; grammar words (particles, auxiliaries) to `grammar`, ranked separately.
+
+        Coverage is computed within each list. Set [vocab] include_grammar = true to keep them in one list.
+        """
         cfg = self.config
         lang = cfg.get("target_lang", "ja")
         vcfg = cfg.get("vocab", {})
         opts = VocabOptions(exclude_pos=vcfg.get("exclude_pos", DEFAULT_EXCLUDE_POS),
                             include_proper=vcfg.get("include_proper", False),
                             min_count=vcfg.get("min_count", 1))
+        grammar_pos = set(vcfg.get("grammar_pos", DEFAULT_GRAMMAR_POS))
+        if vcfg.get("include_grammar", False):
+            grammar_pos = set()
         tok = self.tokenizer
         with self.open_index() as idx:
-            entries = collect(idx, lang, opts, getattr(tok, "word_pattern", None), getattr(tok, "pos_label", None),
-                              source_ids, doc_ids)
+            collected = collect(idx, lang, opts, getattr(tok, "word_pattern", None),
+                                getattr(tok, "pos_label", None), source_ids, doc_ids)
             known = load_word_list(cfg.data_dir / "known" / f"{lang}.txt")
             learning = load_word_list(cfg.data_dir / "known" / f"{lang}.learning.txt")
             ranker = instantiate(cfg.get("ranker"), cfg, "vocab_miner.rankers:FrequencyRanker")
-            entries = ranker.rank(entries, known)
-            add_coverage(entries)
-            apply_status(entries, known, learning)
+            lists = []
+            for part in ([e for e in collected if e.pos not in grammar_pos],
+                         [e for e in collected if e.pos in grammar_pos]):
+                ranked = ranker.rank(part, known)
+                add_coverage(ranked)
+                lists.append(ranked)
+            entries, grammar = lists
+            everything = entries + grammar
+            apply_status(everything, known, learning)
 
             romanizer = self.romanizer()
-            for e in entries:
+            word = getattr(romanizer, "romanize_word", None)
+            for e in everything:
                 if e.reading:
-                    e.romaji = romanizer.romanize(e.reading)
-                    if e.pos in ("ADP", "PART", "SCONJ") and hasattr(romanizer, "romanize_token"):
-                        e.romaji = {"は": "wa", "へ": "e", "を": "o"}.get(e.lemma, e.romaji) if lang == "ja" \
-                            else e.romaji
+                    e.romaji = word(e.lemma, e.reading, e.pos) if word else romanizer.romanize(e.reading)
 
-            self._glosses(entries, log)
+            self._glosses(everything, log)
             for gl in cfg.get("gloss_langs", ["zh-Hant", "en"]):
                 if not gl.startswith("en"):
-                    apply_false_friends(entries, load_false_friends(lang, gl))
+                    apply_false_friends(everything, load_false_friends(lang, gl))
                     break
 
             ecfg = cfg.get("examples", {})
@@ -142,14 +162,11 @@ class Pipeline:
                                    "vocab_miner.examples:DefaultExampleSelector")
             k = ecfg.get("per_entry", 3)
             used: dict[str, Utterance] = {}
-            for e in entries:
-                ids = idx.utterance_ids_for(e.key)
-                cands = list(idx.utterances(ids).values())
+            for e in everything:
+                cands = list(idx.utterances(idx.utterance_ids_for(e.key)).values())
                 e.examples = selector.select(e, cands, known, k)
-                for c in cands:
-                    if c.id in e.examples:
-                        used[c.id] = c
-        return entries, used
+                used.update((c.id, c) for c in cands if c.id in e.examples)
+        return VocabResult(entries, grammar, used)
 
     def _glosses(self, entries: list[VocabEntry], log: Callable[[str], None]) -> None:
         try:

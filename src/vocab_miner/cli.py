@@ -94,25 +94,31 @@ def vocab(
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Output CSV path.")] = None,
     root: RootOpt = None,
 ):
-    """Build the vocabulary list and write it as CSV (default: out/vocab.csv)."""
+    """Build the vocabulary list (out/vocab.csv) and the grammar-word list (out/grammar.csv)."""
     from .export.csv import CsvExporter
 
     cfg = _config(root)
     pipe = Pipeline(cfg)
     try:
         pipe.build(log=lambda m: None)
-        entries, utts = pipe.vocab(source, doc, log=typer.echo)
+        res = pipe.vocab(source, doc, log=typer.echo)
     except (ConfigError, ImportError) as e:
         typer.secho(str(e), fg="red", err=True)
         raise typer.Exit(1)
-    if not entries:
+    if not res.entries and not res.grammar:
         typer.echo("no entries; run `vm ingest` first or check --source/--doc")
         raise typer.Exit(1)
-    name = "vocab" + "".join(f"_{d}" for d in (doc or []))
-    path = out or cfg.out_dir / f"{name}.csv"
-    CsvExporter().export(entries, utts, path)
-    no_zh = sum(1 for e in entries if not e.gloss.get("zh-Hant"))
-    typer.echo(f"{len(entries)} entries -> {path}" + (f" ({no_zh} without a Chinese gloss)" if no_zh else ""))
+    suffix = "".join(f"_{d}" for d in (doc or []))
+    path = out or cfg.out_dir / f"vocab{suffix}.csv"
+    targets = [(res.entries, path, "words")]
+    if res.grammar:
+        targets.append((res.grammar, path.with_name(path.name.replace("vocab", "grammar", 1)
+                                                    if "vocab" in path.name else f"grammar_{path.name}"),
+                        "grammar words"))
+    for entries, p, label in targets:
+        CsvExporter().export(entries, res.utterances, p)
+        no_zh = sum(1 for e in entries if not e.gloss.get("zh-Hant"))
+        typer.echo(f"{len(entries)} {label} -> {p}" + (f" ({no_zh} without a Chinese gloss)" if no_zh else ""))
 
 
 @app.command(name="setup-dict")
@@ -179,7 +185,8 @@ def gloss_todo(
     cfg = _config(root)
     pipe = Pipeline(cfg)
     pipe.build(log=lambda m: None)
-    entries, utts = pipe.vocab(log=lambda m: None)
+    res = pipe.vocab(log=lambda m: None)
+    entries, utts = res.entries + res.grammar, res.utterances
     lines = ["\t".join([*HEADER, "pos_label", "gloss_en", "example", "example_translation"])]
     for e in entries:
         if e.gloss.get(lang):

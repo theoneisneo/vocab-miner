@@ -201,6 +201,11 @@ def test_cli_build_and_vocab_end_to_end(tmp_path):
     rain = next(r for r in rows if r["lemma"] == "雨")
     assert rain["gloss_zh"] == "雨" and rain["romaji"] == "ame" and rain["doc_freq"] == "1"
     assert int(rain["count"]) == 2 and rain["example"]
+    assert not any(r["lemma"] in ("は", "が", "た") for r in rows)          # grammar words are split off
+    grammar = list(csv.DictReader((tmp_path / "out" / "grammar.csv").open(encoding="utf-8-sig")))
+    assert {"は", "た"} <= {r["lemma"] for r in grammar}
+    assert next(r for r in grammar if r["lemma"] == "は")["romaji"] == "wa"
+    assert float(rows[-1]["coverage"].rstrip("%")) == pytest.approx(100.0)   # coverage within each list
     assert load_config(tmp_path).out_dir == tmp_path / "out"
 
 

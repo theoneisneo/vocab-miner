@@ -12,6 +12,8 @@ from .index import Index
 from .model import Token, VocabEntry
 
 DEFAULT_EXCLUDE_POS = ("PUNCT", "SYM", "NUM", "X")
+# function words: learned as grammar from example sentences rather than as flashcards
+DEFAULT_GRAMMAR_POS = ("ADP", "PART", "SCONJ", "AUX")
 
 
 @dataclass

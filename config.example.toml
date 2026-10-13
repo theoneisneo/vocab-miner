@@ -22,6 +22,9 @@ by = "doc_freq"          # doc_freq (found in most songs/scenes first) or count
 exclude_pos = ["PUNCT", "SYM", "NUM", "X"]
 include_proper = false   # proper nouns (names) are left out by default
 min_count = 1
+# particles and auxiliaries go to out/grammar.csv instead of the vocabulary list
+grammar_pos = ["ADP", "PART", "SCONJ", "AUX"]
+include_grammar = false
 
 [examples]
 per_entry = 3
