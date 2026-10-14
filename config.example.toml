@@ -32,6 +32,9 @@ deck = "vocab-miner"
 include_known = false
 romaji_front = false     # true while kana are still new: romaji on the card front
 
+[web]
+title = "My songs"         # name of this data file in the sing-along app
+
 [examples]
 per_entry = 3
 exclude_tags = ["spoiler"]

@@ -51,7 +51,8 @@ def _word(e: VocabEntry, grammar: bool, labels: dict[str, str]) -> dict:
 def build_web_data(entries: Sequence[VocabEntry], grammar: Sequence[VocabEntry], utterances: Sequence[Utterance],
                    tokens: Mapping[str, list[Token]], titles: Mapping[tuple[str, str], str], lang: str,
                    romanize_tokens: Callable[[Sequence[Token]], str] | None = None,
-                   translation_lang: str = "zh-Hant") -> dict:
+                   translation_lang: str = "zh-Hant", title: str = "",
+                   romanize_token_list: Callable[[Sequence[Token]], list[str]] | None = None) -> dict:
     labels = load_short_labels(lang, translation_lang.split("-")[0])
     words = [_word(e, False, labels) for e in entries] + [_word(e, True, labels) for e in grammar]
     index_of = {w["key"]: i for i, w in enumerate(words)}
@@ -67,15 +68,18 @@ def build_web_data(entries: Sequence[VocabEntry], grammar: Sequence[VocabEntry],
             doc["media"] = {"kind": u.media.kind, "uri": u.media.uri}
         doc["noStats"] = doc["noStats"] or NO_STATS_TAG in u.tags
         toks = tokens.get(u.id, [])
-        seg = [[s.text, s.ruby, index_of.get(toks[s.token].key) if s.token is not None else None]
-               for s in segments(u.text, toks)] if toks else [[u.text, None, None]]
+        # seg: [text, ruby, word index or null, token index or null]; pieces of one token share the token index
+        seg = [[s.text, s.ruby, index_of.get(toks[s.token].key) if s.token is not None else None, s.token]
+               for s in segments(u.text, toks)] if toks else [[u.text, None, None, None]]
         doc["lines"].append({
             "id": u.id, "start": u.media.start if u.media else None, "end": u.media.end if u.media else None,
             "seg": seg, "romaji": romanize_tokens(toks) if romanize_tokens and toks else "",
+            "wr": romanize_token_list(toks) if romanize_token_list and toks else [],   # romaji per token
             "tr": u.translations.get(translation_lang, ""),
         })
     return {
         "format": "vocab-miner-web", "version": FORMAT_VERSION, "lang": lang,
+        "title": title or ", ".join(dict.fromkeys(d["source"] for d in docs.values())),
         "generated": datetime.now(UTC).isoformat(timespec="seconds"),
         "words": words, "docs": list(docs.values()),
     }

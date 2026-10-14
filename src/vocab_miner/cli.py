@@ -163,6 +163,7 @@ def anki(
 def web(
     source: Annotated[list[str] | None, typer.Option("--source", "-s", help="Only these source ids.")] = None,
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Output path.")] = None,
+    title: Annotated[str | None, typer.Option(help="Name shown in the app (default from [web] title).")] = None,
     root: RootOpt = None,
 ):
     """Write the data file for the sing-along web app (out/web/songs.json). Import it in the app on your phone."""
@@ -182,7 +183,9 @@ def web(
         titles = idx.doc_titles()
     romanizer = pipe.romanizer()
     data = build_web_data(res.entries, res.grammar, utts, tokens, titles, cfg.get("target_lang", "ja"),
-                          getattr(romanizer, "romanize_tokens", None))
+                          getattr(romanizer, "romanize_tokens", None),
+                          title=title or cfg.get("web", {}).get("title", ""),
+                          romanize_token_list=getattr(romanizer, "romanize_token_list", None))
     path = out or cfg.out_dir / "web" / "songs.json"
     write_web_data(data, path)
     typer.echo(f"{len(data['docs'])} docs, {len(utts)} lines, {len(data['words'])} words -> {path} "

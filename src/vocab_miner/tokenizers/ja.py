@@ -367,16 +367,24 @@ class HepburnRomanizer:
             return _PARTICLES[token.surface]
         return self.romanize(token.reading or token.surface)
 
+    def romanize_token_list(self, tokens: Sequence[Token]) -> list[str]:
+        """Romaji per token ("" for punctuation), with a small tsu at the end of a token resolved against the
+        next token (なかっ + た -> nakat + ta), so each word can be shown under its own kana."""
+        out = [("" if t.pos == "PUNCT" else self.romanize_token(t)) for t in tokens]
+        for i, r in enumerate(out):
+            if r.endswith("'"):
+                nxt = next((x for x in out[i + 1:] if x), "")
+                if nxt[:1].isalpha() and nxt[0] not in "aeiou":
+                    out[i] = r[:-1] + ("t" if nxt.startswith("ch") else nxt[0])
+        return out
+
     def romanize_tokens(self, tokens: Sequence[Token]) -> str:
         """Sentence romaji with spaces between words; inflection (auxiliaries, conjunctive て, suffixes)
         is attached to the word before it: tabete ita, mitorete iru."""
         out: list[str] = []
-        for t in tokens:
-            if t.pos == "PUNCT":
+        for t, r in zip(tokens, self.romanize_token_list(tokens), strict=True):
+            if not r:
                 continue
-            r = self.romanize_token(t)
-            if out and out[-1].endswith("'") and r[:1].isalpha() and r[0] not in "aeiou":
-                out[-1] = out[-1][:-1] + ("t" if r.startswith("ch") else r[0])   # small tsu across tokens
             attach = out and not t.pos_native.startswith("補助動詞") and (
                 t.pos == "AUX" or t.pos_native.startswith(("助詞-接続助詞", "接尾辞")))
             if attach:

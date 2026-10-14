@@ -19,10 +19,12 @@
   </header>
 
   <div id="menu" class="menu" hidden>
-    <button data-action="import">匯入資料檔…</button>
+    <button data-action="home">回首頁</button>
+    <button data-action="import">匯入或更新資料檔…</button>
+    <button data-action="rates">播放速度設定…</button>
     <button data-action="export-known">匯出已學會的詞</button>
     <button data-action="import-known">匯入已學會的詞…</button>
-    <button data-action="clear" class="danger">清除本機資料</button>
+    <button data-action="clear" class="danger">清除所有本機資料</button>
   </div>
 
   <main id="view"></main>
@@ -48,6 +50,8 @@
        the content is checked after picking instead -->
   <input id="file" type="file" hidden>
   <input id="known-file" type="file" hidden>
+  <input id="media-file" type="file" accept="audio/*,video/*" hidden>
+  <div id="dialog" class="dialog" hidden role="dialog" aria-modal="true"></div>
   <div id="toast" class="toast" hidden></div>
 
   <script src="app.js"></script>

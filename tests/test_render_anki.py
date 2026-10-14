@@ -121,11 +121,11 @@ def test_web_data():
     line = doc["lines"][0]
     assert (line["start"], line["end"], line["tr"], line["romaji"]) == (1.0, 3.0, "今天下雨了", "kyou ame ga futta")
     assert "".join(s[0] for s in line["seg"]) == TEXT
-    assert ["雨", "あめ", 0] in line["seg"] and ["が", None, 1] in line["seg"]
-    assert ["今日", "きょう", None] in line["seg"]                        # not in the word lists: not linked
+    assert ["雨", "あめ", 0, 2] in line["seg"] and ["が", None, 1, 3] in line["seg"]
+    assert ["今日", "きょう", None, 0] in line["seg"]                     # not in the word lists: not linked
     assert (d["words"][0]["upos"], d["words"][0]["short"]) == ("NOUN", "雨")
     assert d["words"][1]["short"] == "主語"                                # grammar label from the data file
-    assert other["lines"][0]["seg"] == [["雨", None, None]]               # no tokens: plain text
+    assert other["lines"][0]["seg"] == [["雨", None, None, None]]         # no tokens: plain text
 
 
 def test_anki_romaji_front(tmp_path):
@@ -212,3 +212,23 @@ def test_short_labels_only_for_grammar_words():
     aux = VocabEntry(lemma="ない", lang="ja", pos="AUX", key="ない\tない", reading="ない", gloss={"zh-Hant": "不、沒"})
     d = build_web_data([adj], [aux], [], {}, {}, "ja")
     assert [w["short"] for w in d["words"]] == ["沒有", "不"]
+
+
+def test_web_data_token_romaji_and_title():
+    pytest.importorskip("fugashi")
+    from vocab_miner.export.web import build_web_data
+    from vocab_miner.tokenizers.ja import HepburnRomanizer, JapaneseTokenizer
+
+    tok, rom = JapaneseTokenizer(), HepburnRomanizer()
+    text = "僕は食べられなかった"
+    toks = tok.tokenize(text)
+    u = Utterance(id="s:d:1", source_id="s", doc_id="d", seq=1, lang="ja", text=text)
+    d = build_web_data([], [], [u], {u.id: toks}, {}, "ja", rom.romanize_tokens, title="Mine",
+                       romanize_token_list=rom.romanize_token_list)
+    assert d["title"] == "Mine"
+    line = d["docs"][0]["lines"][0]
+    assert line["wr"] == ["boku", "wa", "tabe", "rare", "nakat", "ta"]      # small tsu resolved per word
+    ti = [s[3] for s in line["seg"]]
+    assert list(dict.fromkeys(ti)) == list(range(len(toks)))               # every token, in order
+    assert ti.count(2) == 2                                                # 食 (ruby) + べ: one token, two pieces
+    assert build_web_data([], [], [u], {u.id: toks}, {}, "ja")["title"] == "s"   # default: source ids
