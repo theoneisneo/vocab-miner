@@ -232,3 +232,22 @@ def test_web_data_token_romaji_and_title():
     assert list(dict.fromkeys(ti)) == list(range(len(toks)))               # every token, in order
     assert ti.count(2) == 2                                                # 食 (ruby) + べ: one token, two pieces
     assert build_web_data([], [], [u], {u.id: toks}, {}, "ja")["title"] == "s"   # default: source ids
+
+
+def test_songs_template_is_importable():
+    """docs/templates/songs.template.json must satisfy the same rules the web page checks on import."""
+    import json
+    from pathlib import Path
+
+    d = json.loads((Path(__file__).parent.parent / "docs" / "templates" / "songs.template.json").read_text(
+        encoding="utf-8"))
+    assert d["format"] == "vocab-miner-web" and d["version"] == 1
+    assert all(isinstance(w["key"], str) and isinstance(w["lemma"], str) for w in d["words"])
+    ids = [doc["id"] for doc in d["docs"]]
+    assert ids and len(ids) == len(set(ids))
+    for doc in d["docs"]:
+        for line in doc["lines"]:
+            for seg in line["seg"]:
+                assert isinstance(seg[0], str)
+                assert seg[2] is None or 0 <= seg[2] < len(d["words"])
+            assert line.get("start") is None or isinstance(line["start"], (int, float))

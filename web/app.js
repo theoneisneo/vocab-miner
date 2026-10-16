@@ -53,7 +53,8 @@ async function kvKeys() {
 const PREFS_KEY = "vm.prefs";
 const ALL_RATES = [2, 1.75, 1.5, 1.25, 1, 0.75, 0.5, 0.25];
 const prefs = Object.assign({ ruby: true, romaji: true, tr: true, gloss: false, struct: false, ex: false,
-  follow: true, loop: false, rate: 1, rates: [1, 0.75, 0.5, 0.25], ask: "auto" }, safeJson(localStorageGet(PREFS_KEY)));
+  follow: true, loop: false, rate: 1, rates: [1, 0.75, 0.5, 0.25], ask: "auto", showDisplay: true, lessonOpen: true },
+  safeJson(localStorageGet(PREFS_KEY)));
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function localStorageSet(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } }
 function safeJson(s) { try { return JSON.parse(s) || {}; } catch { return {}; } }
@@ -63,6 +64,7 @@ function savePrefs() { localStorageSet(PREFS_KEY, JSON.stringify(prefs)); }
 let datasets = new Map();   // dataset id -> imported data file
 let data = null;            // the dataset of the song being shown
 let known = new Map();      // word key -> true/false (overrides status from the data files; shared by all datasets)
+let lookups = new Map();    // word key -> how many times the word card was opened (words you keep checking)
 let player = null, ticker = null, currentLine = -1, loopLine = -1;
 
 function isKnown(w) {
@@ -201,6 +203,8 @@ function renderHome() {
       el("button", { class: "primary", onclick: () => $("#file").click() }, "匯入資料檔")));
     return;
   }
+  const often = renderOftenLooked();
+  if (often) view.append(often);
   for (const [id, ds] of datasets) {
     const docs = ds.docs.map((d) => ({ d, s: docStats(ds, d) }));
     const main = docs.filter((x) => !x.d.noStats), extra = docs.filter((x) => x.d.noStats);
@@ -272,13 +276,25 @@ async function renderDoc(dsId, ds, doc) {
   };
   swipeable(rateBtn, (dir) => applyRate(stepRate(prefs.rate, dir)), () => applyRate(nextRate(prefs.rate)));
   const playable = !!(local || youtube);
-  const toolbar = el("div", { class: "toolbar" },
+  // row 1: what you press while singing; row 2: how lines are shown (set once, then fold away)
+  const displayRow = el("div", { class: "toolbar display-row" + (playable && !prefs.showDisplay ? " collapsed" : "") },
     chip("假名", "ruby"), chip("拼音", "romaji"), chip("中文", "tr"), chip("逐詞", "gloss"), chip("結構", "struct"),
-    doc.lines.some((l) => l.ex) ? chip("解說", "ex") : null,
-    playable ? chip("跟隨", "follow") : null,
-    playable ? chip("單句重複", "loop", () => { loopLine = prefs.loop ? currentLine : -1; }) : null,
-    playable ? rateBtn : null);
-  stick.append(toolbar);
+    doc.lines.some((l) => l.ex) ? chip("解說", "ex") : null);
+  if (playable) {
+    const label = () => (prefs.showDisplay ? "顯示 ▴" : "顯示 ▾");
+    const toggle = el("button", { class: "chip toggle-chip", "aria-expanded": String(!!prefs.showDisplay),
+      "aria-label": "顯示設定" }, label());
+    toggle.addEventListener("click", () => {
+      prefs.showDisplay = !prefs.showDisplay;
+      savePrefs();
+      displayRow.classList.toggle("collapsed", !prefs.showDisplay);
+      toggle.textContent = label();
+      toggle.setAttribute("aria-expanded", String(prefs.showDisplay));
+    });
+    stick.append(el("div", { class: "toolbar play-row" },
+      chip("單句重複", "loop", () => { loopLine = prefs.loop ? currentLine : -1; }), rateBtn, chip("跟隨", "follow"), toggle));
+  }
+  stick.append(displayRow);
   stick.append(el("div", { class: "legend" },
     el("span", { class: "role-prt" }, "助詞"), el("span", { class: "role-pred" }, "動詞・形容詞"),
     el("span", { class: "role-aux" }, "時態・否定・句型"), el("span", { class: "legend-note" }, "動詞通常在句尾")));
@@ -294,6 +310,8 @@ async function renderDoc(dsId, ds, doc) {
             youtube ? "改用手機裡的影片／音檔播放" : "選擇手機裡的影片／音檔來播放")));
   }
 
+  const lesson = renderLesson(doc);
+  if (lesson) root.append(lesson);
   root.append(el("ol", { class: "lines" }, doc.lines.map((line, i) => renderLine(doc, line, i))));
   view.append(root);
 
@@ -366,11 +384,76 @@ function renderLine(doc, line, i) {
   return li;
 }
 
+// ---------- learning this song ----------
+const LESSON_SIZE = 10;
+
+/** New content words of a song in learning order, with how often each occurs in the song. */
+function songNewWords(doc) {
+  const seen = new Map();
+  doc.lines.forEach((line, i) => {
+    let last;
+    for (const s of line.seg) {
+      const wi = s[2], ti = s[3] ?? null;
+      if (wi === null || wi === undefined) continue;
+      const tag = ti !== null ? `t${ti}` : `w${wi}`;
+      if (tag === last) continue;                   // pieces of one token count once
+      last = tag;
+      const w = data.words[wi];
+      if (!w || w.grammar || isKnown(w)) continue;
+      const e = seen.get(w.key) || { w, n: 0, line: i };
+      e.n++;
+      seen.set(w.key, e);
+    }
+  });
+  return [...seen.values()].sort((a, b) => (a.w.rank ?? 1e9) - (b.w.rank ?? 1e9));
+}
+
+function wordButton(cls, w, extra, onOpen) {
+  const b = el("button", { class: cls + (isKnown(w) ? " known" : ""), "data-key": w.key },
+    el("span", { class: "lw-lemma" }, w.lemma),
+    w.reading && w.reading !== w.lemma ? el("span", { class: "lw-reading" }, w.reading) : null,
+    el("span", { class: "lw-gloss" }, shortGloss(w)),
+    extra ? el("span", { class: "lw-n" }, extra) : null);
+  b.addEventListener("click", (ev) => { ev.stopPropagation(); onOpen(b); });
+  return b;
+}
+
+/** "Learn these first": the song's most useful new words, before you start singing. */
+function renderLesson(doc) {
+  const fresh = songNewWords(doc);
+  if (!fresh.length) return null;
+  const first = fresh.slice(0, LESSON_SIZE);
+  const card = el("details", { class: "lesson", open: prefs.lessonOpen !== false },
+    el("summary", {}, `這首先學這 ${first.length} 個詞`, el("span", { class: "lesson-sub" }, `（這首共有 ${fresh.length} 個生詞）`)),
+    el("div", { class: "lesson-words" },
+      first.map(({ w, n, line }) => wordButton("lesson-word", w, `×${n}`, (b) => openWord(w, b, doc, line)))),
+    el("p", { class: "hint" }, "依「在你所有歌裡最常出現」排序，學了最划算。點詞看讀音和意思；查過的次數會記下來，常查的就是還沒記住的。"));
+  card.addEventListener("toggle", () => { prefs.lessonOpen = card.open; savePrefs(); });
+  return card;
+}
+
+/** Home: the words opened most often across all data files. */
+function renderOftenLooked() {
+  const byKey = new Map();
+  for (const [, ds] of datasets) for (const w of ds.words) if (!byKey.has(w.key)) byKey.set(w.key, { w, ds });
+  const top = [...lookups.entries()].filter(([k, n]) => n > 0 && byKey.has(k))
+    .sort((a, b) => b[1] - a[1]).slice(0, 12);
+  if (!top.length) return null;
+  return el("section", { class: "often" },
+    el("div", { class: "section-title" }, "你最常查的詞（還沒記住的）"),
+    el("div", { class: "lesson-words" }, top.map(([k, n]) => {
+      const { w, ds } = byKey.get(k);
+      return wordButton("often-word", w, `查 ${n} 次`, (b) => { data = ds; openWord(w, b); });
+    })));
+}
+
 // ---------- word sheet ----------
 let sheetWord = null, sheetSpan = null, sheetLine = null;
 function openWord(w, span, doc, i) {
   sheetWord = w;
   sheetLine = doc ? { doc, i } : null;
+  lookups.set(w.key, (lookups.get(w.key) || 0) + 1);
+  kvSet("lookups", Object.fromEntries(lookups)).catch(() => {});
   document.querySelectorAll(".w.sel").forEach((e) => e.classList.remove("sel"));
   sheetSpan = span;
   span.classList.add("sel");
@@ -380,9 +463,10 @@ function openWord(w, span, doc, i) {
   $("#sheet-ff").hidden = !w.ff;
   $("#sheet-ff").textContent = w.ff ? `⚠ 和中文意思不同：${w.ff}` : "";
   $("#sheet-en").textContent = w.en || "";
-  $("#sheet-meta").textContent = w.grammar
+  $("#sheet-meta").textContent = (w.grammar
     ? `${w.pos || ""} · 文法詞 · 出現 ${w.count ?? "?"} 次`
-    : `${w.pos || ""} · 學習順序 #${w.rank ?? "?"} · 出現在 ${w.docFreq ?? "?"} 首、共 ${w.count ?? "?"} 次`;
+    : `${w.pos || ""} · 學習順序 #${w.rank ?? "?"} · 出現在 ${w.docFreq ?? "?"} 首、共 ${w.count ?? "?"} 次`)
+    + ` · 你查過 ${lookups.get(w.key)} 次`;
   updateKnownButton();
   $("#sheet").hidden = false;
 }
@@ -403,9 +487,14 @@ $("#sheet").addEventListener("click", (ev) => { if (ev.target.id === "sheet") cl
 $("#sheet-known").addEventListener("click", async () => {
   await setKnown(sheetWord, !isKnown(sheetWord));
   updateKnownButton();
-  const wi = String(data.words.indexOf(sheetWord));
-  document.querySelectorAll(`.w[data-w="${wi}"]`).forEach((e) =>
-    e.classList.toggle("new", !sheetWord.grammar && !isKnown(sheetWord)));
+  const wi = data ? String(data.words.indexOf(sheetWord)) : null;
+  if (wi !== null) {
+    document.querySelectorAll(`.w[data-w="${wi}"]`).forEach((e) =>
+      e.classList.toggle("new", !sheetWord.grammar && !isKnown(sheetWord)));
+  }
+  document.querySelectorAll(".lesson-word, .often-word").forEach((e) => {
+    if (e.dataset.key === sheetWord.key) e.classList.toggle("known", isKnown(sheetWord));
+  });
 });
 
 // ---------- players ----------
@@ -807,6 +896,7 @@ $("#known-file").addEventListener("change", async (ev) => {
     }
     if (legacy) await kvDel("data");
     known = new Map(Object.entries((await kvGet("known")) || {}));
+    lookups = new Map(Object.entries((await kvGet("lookups")) || {}));
   } catch (err) {
     toast(`無法讀取本機資料：${err.message}`);
   }

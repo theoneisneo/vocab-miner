@@ -1,0 +1,52 @@
+{
+  "_說明": "跟唱網頁的資料檔範本。照格式填入你的歌詞後，在網頁「匯入資料檔」。欄位說明見 docs/web-data-format.md。以 _ 開頭的欄位只是註解，網頁會忽略。",
+  "format": "vocab-miner-web",
+  "version": 1,
+  "title": "我的歌",
+  "lang": "ja",
+  "words": [
+    {
+      "_說明": "詞彙清單。句子裡用這個陣列的位置（從 0 開始）指到詞。可以先留空 []，只是點詞時就沒有詞卡。",
+      "key": "雨\tあめ",
+      "lemma": "雨",
+      "reading": "あめ",
+      "romaji": "ame",
+      "upos": "NOUN",
+      "short": "雨",
+      "zh": "雨"
+    },
+    {
+      "key": "降る\tふる",
+      "lemma": "降る",
+      "reading": "ふる",
+      "romaji": "furu",
+      "upos": "VERB",
+      "short": "下（雨）",
+      "zh": "（雨、雪）下、降"
+    }
+  ],
+  "docs": [
+    {
+      "_說明": "一首歌。media 填 YouTube 影片 ID（網址 watch?v= 後面那一串）；沒有影片就填 null，之後可以在網頁上選手機裡的檔案播放。",
+      "id": "my-song-1",
+      "title": "歌名",
+      "media": { "kind": "youtube", "uri": "YOUTUBE_VIDEO_ID" },
+      "lines": [
+        {
+          "_說明": "一句。start/end 是秒數；seg 是 [文字, 讀音或 null, 詞的位置或 null]，全部接起來就是整句。",
+          "start": 12.5,
+          "end": 15.0,
+          "seg": [["雨", "あめ", 0], ["が", null, null], ["降", "ふ", 1], ["る", null, 1]],
+          "romaji": "ame ga furu",
+          "tr": "下雨了"
+        },
+        {
+          "start": 15.0,
+          "end": 18.0,
+          "seg": [["（第二句的原文）", null, null]],
+          "tr": "（第二句的翻譯）"
+        }
+      ]
+    }
+  ]
+}
