@@ -181,11 +181,16 @@ def web(
         utts = list(idx.iter_utterances(source))
         tokens = {u.id: idx.tokens(u.id) for u in utts}
         titles = idx.doc_titles()
+    from .explain import explain_path, read_explanations
+    explanations: dict[str, str] = {}
+    for sid in {u.source_id for u in utts}:
+        explanations.update(read_explanations(explain_path(cfg.data_dir, sid)))
     romanizer = pipe.romanizer()
     data = build_web_data(res.entries, res.grammar, utts, tokens, titles, cfg.get("target_lang", "ja"),
                           getattr(romanizer, "romanize_tokens", None),
                           title=title or cfg.get("web", {}).get("title", ""),
-                          romanize_token_list=getattr(romanizer, "romanize_token_list", None))
+                          romanize_token_list=getattr(romanizer, "romanize_token_list", None),
+                          explanations=explanations)
     path = out or cfg.out_dir / "web" / "songs.json"
     write_web_data(data, path)
     typer.echo(f"{len(data['docs'])} docs, {len(utts)} lines, {len(data['words'])} words -> {path} "
@@ -219,6 +224,76 @@ def kana(
     n = KanaDeckExporter().export(units, path)
     hira = sum(u.script == "hiragana" for u in units)
     typer.echo(f"{n} cards ({hira} hiragana, {n - hira} katakana) -> {path}")
+
+
+@app.command(name="explain-todo")
+def explain_todo(
+    doc: Annotated[list[str] | None, typer.Option("--doc", "-d", help="Only these doc ids (e.g. one song).")] = None,
+    source: Annotated[list[str] | None, typer.Option("--source", "-s", help="Only these source ids.")] = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Write the list here instead of stdout.")] = None,
+    root: RootOpt = None,
+):
+    """List lines without an explanation (JSON Lines). Fill in "explanation" and run `vm explain-import`."""
+    import json
+
+    from .explain import explain_path, read_explanations, todo_row
+
+    cfg = _config(root)
+    pipe = Pipeline(cfg)
+    pipe.build(log=lambda m: None)
+    res = pipe.vocab(log=lambda m: None)
+    glosses = {e.key: e.gloss.get("zh-Hant", "") for e in res.entries + res.grammar}
+    rows = []
+    with pipe.open_index() as idx:
+        titles = idx.doc_titles()
+        utts = list(idx.iter_utterances(source, doc))
+        done: dict[str, dict[str, str]] = {}
+        for i, u in enumerate(utts):
+            if u.source_id not in done:
+                done[u.source_id] = read_explanations(explain_path(cfg.data_dir, u.source_id))
+            if u.id in done[u.source_id]:
+                continue
+            prev = utts[i - 1] if i > 0 and utts[i - 1].doc_id == u.doc_id else None
+            nxt = utts[i + 1] if i + 1 < len(utts) and utts[i + 1].doc_id == u.doc_id else None
+            rows.append(todo_row(u, idx.tokens(u.id), glosses, titles.get((u.source_id, u.doc_id), u.doc_id),
+                                 prev, nxt))
+    text = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
+    if out:
+        out.write_text(text, encoding="utf-8")
+        typer.echo(f"{len(rows)} lines -> {out}")
+    else:
+        typer.echo(text, nl=False)
+
+
+@app.command(name="explain-import")
+def explain_import(
+    file: Annotated[Path, typer.Argument(help="JSON Lines with id and explanation (as written by explain-todo).")],
+    origin: Annotated[str, typer.Option(help="Origin for rows without one.")] = "machine",
+    root: RootOpt = None,
+):
+    """Append explanations to data/explain/<source_id>.jsonl. Existing explanations are never changed."""
+    import json
+    from collections import defaultdict
+
+    from .explain import append_explanations, explain_path, source_of
+
+    cfg = _config(root)
+    by_source: dict[str, list[dict]] = defaultdict(list)
+    for n, line in enumerate(file.read_text(encoding="utf-8-sig").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as e:
+            typer.secho(f"line {n}: not JSON ({e})", fg="red", err=True)
+            raise typer.Exit(1)
+        if row.get("id") and row.get("explanation"):
+            by_source[source_of(row["id"])].append(row)
+    for sid, rows in by_source.items():
+        path = explain_path(cfg.data_dir, sid)
+        typer.echo(f"{sid}: added {append_explanations(path, rows, origin)} of {len(rows)} -> {path}")
+    if not by_source:
+        typer.echo("nothing to import (no rows with an explanation)")
 
 
 @app.command(name="setup-dict")

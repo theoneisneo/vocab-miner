@@ -52,7 +52,8 @@ def build_web_data(entries: Sequence[VocabEntry], grammar: Sequence[VocabEntry],
                    tokens: Mapping[str, list[Token]], titles: Mapping[tuple[str, str], str], lang: str,
                    romanize_tokens: Callable[[Sequence[Token]], str] | None = None,
                    translation_lang: str = "zh-Hant", title: str = "",
-                   romanize_token_list: Callable[[Sequence[Token]], list[str]] | None = None) -> dict:
+                   romanize_token_list: Callable[[Sequence[Token]], list[str]] | None = None,
+                   explanations: Mapping[str, str] | None = None) -> dict:
     labels = load_short_labels(lang, translation_lang.split("-")[0])
     words = [_word(e, False, labels) for e in entries] + [_word(e, True, labels) for e in grammar]
     index_of = {w["key"]: i for i, w in enumerate(words)}
@@ -77,6 +78,8 @@ def build_web_data(entries: Sequence[VocabEntry], grammar: Sequence[VocabEntry],
             "wr": romanize_token_list(toks) if romanize_token_list and toks else [],   # romaji per token
             "tr": u.translations.get(translation_lang, ""),
         })
+        if explanations and u.id in explanations:
+            doc["lines"][-1]["ex"] = explanations[u.id]          # written explanation (shown on demand)
     return {
         "format": "vocab-miner-web", "version": FORMAT_VERSION, "lang": lang,
         "title": title or ", ".join(dict.fromkeys(d["source"] for d in docs.values())),

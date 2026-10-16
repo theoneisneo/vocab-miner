@@ -130,7 +130,21 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .line-romaji { font-size: 14px; color: var(--muted); }
 .line-tr { font-size: 15px; }
 .hide-romaji .line-romaji, .hide-tr .line-tr { display: none; }
-.line-time { float: right; font-size: 12px; color: var(--muted); margin-left: 8px; font-variant-numeric: tabular-nums; }
+.line-side { float: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-left: 8px; }
+.line-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ask-btn { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px;
+  font-size: 13px; padding: 5px 12px; min-height: 30px; cursor: pointer; }
+.ask-btn:active { background: var(--accent-soft); color: var(--accent); }
+.line-ex { display: none; margin-top: 4px; font-size: 14px; }
+.show-ex .line-ex { display: block; }
+.line-ex summary { color: var(--accent); cursor: pointer; font-size: 13px; }
+.line-ex p { margin: 4px 0 2px; padding: 8px 10px; background: var(--surface); border-left: 3px solid var(--accent);
+  border-radius: 6px; line-height: 1.6; }
+.rate-chip { touch-action: none; user-select: none; -webkit-user-select: none; min-width: 72px; }
+.sheet .sheet-ask { width: 100%; margin-top: 8px; }
+.ask-options { display: grid; gap: 8px; }
+.ask-option { display: flex; gap: 8px; align-items: flex-start; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+.ask-text { width: 100%; min-height: 160px; font-size: 13px; }
 
 .w { cursor: pointer; border-radius: 4px; }
 .w.new .wt { text-decoration: underline; text-decoration-color: var(--new); text-decoration-thickness: 2px; text-underline-offset: 6px; }

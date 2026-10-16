@@ -190,7 +190,24 @@ uv run vm web --root examples/demo      # → out/web/songs.json
    選一個和字幕時間軸對得上的檔案。檔案只存在手機上，下次打開還在。
 6. 可以匯入好幾個資料檔（在設定檔用 `[web] title = "名稱"` 或 `vm web --title 名稱` 取名）；同名的會更新，不同名的會分組並列。
 
+7. **看不懂翻譯時問 AI**：每句右邊的「問」會把這句的原文、讀音、逐詞意思、前後句和翻譯整理成一個問題，
+   手機上用分享選單交給 Claude、ChatGPT 等 app，電腦上複製到剪貼簿再貼到 AI app。詞卡上也有「問 AI 這個詞」。
+   選單「問 AI 的方式」可以改成一律複製，或直接開網頁版並填好問題（實驗性，取決於網站是否支援）。
+
 想用自己的程式產生資料檔，格式見 [web-data-format.md](web-data-format.md)。
+
+## 12. 每句的解說（選用）
+
+想把「為什麼這樣翻」先寫好、離線也能看，可以為一首歌產生解說：
+
+```bash
+uv run vm explain-todo --doc morning -o explain.jsonl   # 每句一行：原文、讀音、逐詞、翻譯、前後句
+# 填寫每行的 "explanation"（自己寫，或交給 AI 起草再檢查）
+uv run vm explain-import explain.jsonl                  # 存進 data/explain/<source_id>.jsonl（只新增、不覆蓋）
+uv run vm web                                           # 重新產生 songs.json
+```
+
+跟唱網頁的工具列會出現「解說」開關（預設關閉），打開後每句下面有可以展開的解說。
 
 在電腦上預覽：`uv run python -m http.server 5180`，打開 `http://localhost:5180/web/`（Windows 會保留部分 port，若無法啟動就換一個號碼）。
 

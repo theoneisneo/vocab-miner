@@ -52,8 +52,8 @@ async function kvKeys() {
 
 const PREFS_KEY = "vm.prefs";
 const ALL_RATES = [2, 1.75, 1.5, 1.25, 1, 0.75, 0.5, 0.25];
-const prefs = Object.assign({ ruby: true, romaji: true, tr: true, gloss: false, struct: false, follow: true,
-  loop: false, rate: 1, rates: [1, 0.75, 0.5, 0.25] }, safeJson(localStorageGet(PREFS_KEY)));
+const prefs = Object.assign({ ruby: true, romaji: true, tr: true, gloss: false, struct: false, ex: false,
+  follow: true, loop: false, rate: 1, rates: [1, 0.75, 0.5, 0.25], ask: "auto" }, safeJson(localStorageGet(PREFS_KEY)));
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function localStorageSet(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } }
 function safeJson(s) { try { return JSON.parse(s) || {}; } catch { return {}; } }
@@ -262,15 +262,19 @@ async function renderDoc(dsId, ds, doc) {
       if (onToggle) onToggle();
     },
   }, label);
-  const rateBtn = el("button", { class: "chip", onclick: () => {
-    prefs.rate = nextRate(prefs.rate);
+  const rateBtn = el("button", { class: "chip rate-chip", "aria-label": "播放速度：左右滑動調整，點一下切換" },
+    `‹ ${prefs.rate}× ›`);
+  const applyRate = (r) => {
+    prefs.rate = r;
     savePrefs();
-    rateBtn.textContent = `${prefs.rate}×`;
-    if (player) player.setRate(prefs.rate);
-  } }, `${prefs.rate}×`);
+    rateBtn.textContent = `‹ ${r}× ›`;
+    if (player) player.setRate(r);
+  };
+  swipeable(rateBtn, (dir) => applyRate(stepRate(prefs.rate, dir)), () => applyRate(nextRate(prefs.rate)));
   const playable = !!(local || youtube);
   const toolbar = el("div", { class: "toolbar" },
     chip("假名", "ruby"), chip("拼音", "romaji"), chip("中文", "tr"), chip("逐詞", "gloss"), chip("結構", "struct"),
+    doc.lines.some((l) => l.ex) ? chip("解說", "ex") : null,
     playable ? chip("跟隨", "follow") : null,
     playable ? chip("單句重複", "loop", () => { loopLine = prefs.loop ? currentLine : -1; }) : null,
     playable ? rateBtn : null);
@@ -303,6 +307,7 @@ function applyPrefClasses(root) {
   root.classList.toggle("hide-tr", !prefs.tr);
   root.classList.toggle("show-gloss", !!prefs.gloss);
   root.classList.toggle("show-struct", !!prefs.struct);
+  root.classList.toggle("show-ex", !!prefs.ex);
 }
 
 /** Sentence role used for colouring: particles, predicates (verbs/adjectives), auxiliaries (tense, negation...). */
@@ -340,24 +345,32 @@ function renderLine(doc, line, i) {
       block.append(text);
       if (ti !== null && wr[ti]) block.append(el("span", { class: "wr" }, wr[ti]));
       block.append(el("span", { class: "gl" }, w ? shortGloss(w) : ""));
-      if (w) block.addEventListener("click", (ev) => { ev.stopPropagation(); openWord(w, block); });
+      if (w) block.addEventListener("click", (ev) => { ev.stopPropagation(); openWord(w, block, doc, i); });
       jp.append(block);
     }
     text.append(node);
   }
+  const ask = el("button", { class: "ask-btn", "aria-label": "問 AI 這句為什麼這樣翻", title: "問 AI 這句為什麼這樣翻" }, "問");
+  ask.addEventListener("click", (ev) => { ev.stopPropagation(); askAI(linePrompt(doc, i)); });
+  const ex = line.ex ? el("details", { class: "line-ex" }, el("summary", {}, "解說"), el("p", {}, line.ex)) : null;
+  if (ex) ex.addEventListener("click", (ev) => ev.stopPropagation());
   const li = el("li", { class: "line", "data-i": i },
-    line.start !== null && line.start !== undefined ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
+    el("div", { class: "line-side" },
+      line.start !== null && line.start !== undefined ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
+      ask),
     jp,
     line.romaji ? el("div", { class: "line-romaji" + (wr.length ? " has-wr" : "") }, line.romaji) : null,
-    line.tr ? el("div", { class: "line-tr" }, line.tr) : null);
+    line.tr ? el("div", { class: "line-tr" }, line.tr) : null,
+    ex);
   li.addEventListener("click", () => playLine(doc, i));
   return li;
 }
 
 // ---------- word sheet ----------
-let sheetWord = null, sheetSpan = null;
-function openWord(w, span) {
+let sheetWord = null, sheetSpan = null, sheetLine = null;
+function openWord(w, span, doc, i) {
   sheetWord = w;
+  sheetLine = doc ? { doc, i } : null;
   document.querySelectorAll(".w.sel").forEach((e) => e.classList.remove("sel"));
   sheetSpan = span;
   span.classList.add("sel");
@@ -384,6 +397,8 @@ function closeSheet() {
   if (sheetSpan) sheetSpan.classList.remove("sel");
 }
 $("#sheet-close").addEventListener("click", closeSheet);
+$("#sheet-ask").addEventListener("click", () =>
+  askAI(wordPrompt(sheetWord, sheetLine && sheetLine.doc, sheetLine && sheetLine.i)));
 $("#sheet").addEventListener("click", (ev) => { if (ev.target.id === "sheet") closeSheet(); });
 $("#sheet-known").addEventListener("click", async () => {
   await setKnown(sheetWord, !isKnown(sheetWord));
@@ -511,6 +526,116 @@ function followLine(li) {
   window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
 }
 
+// ---------- ask an AI ----------
+// No API key and no cost: the question is handed to an AI app the user already has.
+// "auto": share sheet on phones (pick Claude, ChatGPT, Gemini ...), clipboard on computers.
+const ASK_MODES = {
+  auto: "自動：手機用分享選單、電腦複製到剪貼簿",
+  copy: "一律複製到剪貼簿",
+  chatgpt: "開啟 ChatGPT 網頁並填好問題（實驗性）",
+  claude: "開啟 Claude 網頁並填好問題（實驗性）",
+};
+const ASK_URLS = { chatgpt: "https://chatgpt.com/?q=", claude: "https://claude.ai/new?q=" };
+
+const segText = (line) => line.seg.map((s) => s[0]).join("");
+const segReading = (line) => line.seg.map((s) => s[1] || s[0]).join("");
+
+/** "誰＝誰／の＝的／帰れ＝回去 ..." for the words of a line. */
+function lineWords(line) {
+  const out = [];
+  let group;
+  for (const s of line.seg) {
+    const [t, , wi = null, ti = null] = s;
+    const g = ti !== null ? `t${ti}` : wi !== null ? `w${wi}` : null;
+    if (g === null) { group = undefined; continue; }
+    if (g === group) { out[out.length - 1].text += t; continue; }
+    group = g;
+    out.push({ text: t, w: wi !== null ? data.words[wi] : null });
+  }
+  return out.filter((x) => x.w).map((x) => `${x.text}＝${shortGloss(x.w) || x.w.lemma}`).join("／");
+}
+
+function linePrompt(doc, i) {
+  const line = doc.lines[i];
+  const prev = doc.lines[i - 1], next = doc.lines[i + 1];
+  return [
+    "我在學日文，請用繁體中文解釋這句歌詞為什麼這樣翻譯。",
+    `歌曲：${doc.title}`,
+    `原文：${segText(line)}`,
+    `讀音：${segReading(line)}${line.romaji ? `（${line.romaji}）` : ""}`,
+    `逐詞：${lineWords(line)}`,
+    prev ? `前一句：${segText(prev)}` : null,
+    next ? `後一句：${segText(next)}` : null,
+    `現有翻譯：${line.tr || "（沒有）"}`,
+    "請說明：1. 句子結構（動詞在哪、助詞的作用） 2. 逐字直譯 3. 翻譯哪裡是意譯、為什麼 4. 值得記住的文法",
+  ].filter(Boolean).join("\n");
+}
+
+function wordPrompt(w, doc, i) {
+  const line = doc && doc.lines[i];
+  return [
+    `我在學日文，請用繁體中文解釋「${w.lemma}${w.reading && w.reading !== w.lemma ? `（${w.reading}）` : ""}」這個詞。`,
+    line ? `出現的句子：${segText(line)}` : null,
+    line && line.tr ? `句子翻譯：${line.tr}` : null,
+    w.zh ? `字典意思：${w.zh}` : null,
+    w.en ? `英文：${w.en}` : null,
+    "請說明：1. 它在這句裡的意思 2. 這裡是什麼變化形（如果有） 3. 常見用法和兩三個簡單例句",
+  ].filter(Boolean).join("\n");
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = el("textarea", { style: "position:fixed;opacity:0" });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  }
+}
+
+const isPhone = () => matchMedia("(pointer: coarse)").matches && !!navigator.share;
+
+async function askAI(text) {
+  const mode = prefs.ask || "auto";
+  if (mode === "chatgpt" || mode === "claude") {
+    await copyText(text);                       // in case the site ignores the prefilled question
+    window.open(ASK_URLS[mode] + encodeURIComponent(text), "_blank", "noopener");
+    return;
+  }
+  if (mode === "auto" && isPhone()) {
+    try {
+      await navigator.share({ text });
+      return;
+    } catch (err) {
+      if (err && err.name === "AbortError") return;   // the user closed the share sheet
+    }
+  }
+  if (await copyText(text)) toast("問題已複製，貼到你的 AI app（Ctrl+V／⌘V）");
+  else dialog("請手動複製", el("textarea", { class: "ask-text", readonly: true }, text));
+}
+
+function openAskSettings() {
+  const current = prefs.ask || "auto";
+  const options = Object.entries(ASK_MODES).map(([k, label]) =>
+    el("label", { class: "ask-option" },
+      el("input", { type: "radio", name: "ask-mode", value: k, checked: k === current }), ` ${label}`));
+  const save = el("button", { class: "primary", onclick: () => {
+    const picked = document.querySelector('#dialog input[name="ask-mode"]:checked');
+    prefs.ask = picked ? picked.value : "auto";
+    savePrefs();
+    $("#dialog").hidden = true;
+    toast(`問 AI：${ASK_MODES[prefs.ask]}`);
+  } }, "儲存");
+  dialog("問 AI 的方式",
+    el("p", { class: "hint" }, "每句的「問」按鈕和詞卡的「問這個詞」會把整理好的問題交給你手邊的 AI app，不需要 API 金鑰、不花錢。"),
+    el("div", { class: "ask-options" }, options), save);
+}
+
 // ---------- playback speed ----------
 function rateCycle() {
   const r = (Array.isArray(prefs.rates) ? prefs.rates : []).filter((x) => ALL_RATES.includes(x));
@@ -522,6 +647,33 @@ function nextRate(current) {
   const i = cycle.indexOf(current);
   return i < 0 ? (cycle.includes(1) ? 1 : cycle[0]) : cycle[(i + 1) % cycle.length];
 }
+/** Swipe right: 0.25x faster, swipe left: slower; wraps around between 0.25x and 2x. */
+function stepRate(current, dir) {
+  const min = 0.25, max = 2;
+  let r = Math.round((current + 0.25 * dir) * 100) / 100;
+  if (r > max) r = min;
+  if (r < min) r = max;
+  return r;
+}
+
+/** Horizontal swipe calls onSwipe(+1 / -1); a tap (or Enter/Space) calls onTap; arrow keys call onSwipe. */
+function swipeable(node, onSwipe, onTap) {
+  let x0 = null;
+  node.addEventListener("pointerdown", (ev) => { x0 = ev.clientX; node.setPointerCapture?.(ev.pointerId); });
+  node.addEventListener("pointerup", (ev) => {
+    if (x0 === null) return;
+    const dx = ev.clientX - x0;
+    x0 = null;
+    if (Math.abs(dx) >= 24) onSwipe(dx > 0 ? 1 : -1); else onTap();
+  });
+  node.addEventListener("pointercancel", () => { x0 = null; });
+  node.addEventListener("click", (ev) => { if (ev.detail === 0) onTap(); });   // keyboard activation
+  node.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowRight") { ev.preventDefault(); onSwipe(1); }
+    if (ev.key === "ArrowLeft") { ev.preventDefault(); onSwipe(-1); }
+  });
+}
+
 function openRateSettings() {
   const boxes = ALL_RATES.map((r) => {
     const input = el("input", { type: "checkbox", value: String(r), checked: rateCycle().includes(r) });
@@ -537,7 +689,8 @@ function openRateSettings() {
     toast(`速度按鈕會依序切換：${rateCycle().join(" → ")}`);
     route();
   } }, "儲存");
-  dialog("播放速度", el("p", { class: "hint" }, "勾選速度按鈕要循環的選項（由快到慢）。YouTube 影片只支援 0.25～2 倍。"),
+  dialog("播放速度", el("p", { class: "hint" },
+    "速度按鈕：往右滑快 0.25 倍、往左滑慢 0.25 倍（0.25～2 倍循環）；點一下則依序切換下面勾選的速度（由快到慢）。"),
     el("div", { class: "rate-grid" }, boxes), save);
 }
 
@@ -550,6 +703,7 @@ $("#menu").addEventListener("click", async (ev) => {
   if (action === "home") location.hash = "";
   if (action === "import") $("#file").click();
   if (action === "rates") openRateSettings();
+  if (action === "ask") openAskSettings();
   if (action === "import-known") $("#known-file").click();
   if (action === "export-known") {
     const words = new Map();
