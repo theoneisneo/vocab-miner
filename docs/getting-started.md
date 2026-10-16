@@ -199,6 +199,11 @@ uv run vm web --root examples/demo      # → out/web/songs.json
    手機上用分享選單交給 Claude、ChatGPT 等 app，電腦上複製到剪貼簿再貼到 AI app。詞卡上也有「問 AI 這個詞」。
    選單「問 AI 的方式」可以改成一律複製，或直接開網頁版並填好問題（實驗性，取決於網站是否支援）。
 
+8. **不用電腦也能加歌**：選單「建立歌曲…」（或首頁的「在這裡建立一首歌」）。貼上歌詞和 YouTube 連結，
+   影片播放時每唱到新的一句就點一下，再逐句微調時間；可以按「問 AI 翻譯整首」把翻譯貼回來。
+   網頁會在手機上分詞（第一次需要下載日文分詞器），建立的歌曲放在「我建立的歌曲」。
+   這是選用功能，限制和移除方式見 [web/create/README.md](../web/create/README.md)。
+
 想用自己的程式產生資料檔，格式見 [web-data-format.md](web-data-format.md)。
 
 ## 12. 每句的解說（選用）

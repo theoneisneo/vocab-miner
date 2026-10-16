@@ -105,6 +105,8 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
    - **問 AI**：每句的「問」和詞卡的「問 AI 這個詞」會把整理好的問題（原文、讀音、逐詞意思、前後句、翻譯）交給你手邊的 AI app：
      手機跳出分享選單，電腦複製到剪貼簿。不需要 API 金鑰、不花錢。
    - **解說**：可以預先為每句寫好「為什麼這樣翻」（`vm explain-todo` → 填寫 → `vm explain-import`），工具列的「解說」打開後顯示。
+   - **在網頁裡建立歌曲**（選用功能，不需要電腦）：貼上歌詞和 YouTube 連結、邊聽邊點標時間、問 AI 翻譯，
+     網頁就會分詞並建立歌曲。說明與限制見 [web/create/README.md](web/create/README.md)。
    - 想自己產生資料檔：格式見 [docs/web-data-format.md](docs/web-data-format.md)，可以從空白範本 [docs/templates/songs.template.json](docs/templates/songs.template.json) 開始填。
    - 點一句：影片從這一句開始播；播放時目前這句會高亮並自動捲動。單句重複、0.75／0.5 倍速。
    - 點一個詞：顯示讀音、釋義、同形異義警告，可標記「已學會」；生詞有底線，學會後消失。

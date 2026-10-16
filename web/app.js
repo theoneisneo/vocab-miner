@@ -76,6 +76,31 @@ async function setKnown(w, value) {
 }
 const saveDatasets = () => kvSet("datasets", Object.fromEntries(datasets));
 
+// ---------- optional features ----------
+// Each lives in its own folder and is loaded only when opened. To switch one off, set it to false;
+// to remove it, also delete its folder. Data it created stays usable (it uses the normal data file format).
+const FEATURES = { create: true };   // web/create/: create a song in the browser
+
+/** The only interface optional features get to the app. */
+function featureApi() {
+  return {
+    el, toast, dialog, askAI, loadYouTubeApi, validate,
+    get datasets() { return datasets; },
+    async saveDataset(id, d) { datasets.set(id, d); await saveDatasets(); },
+    openDoc(dsId, docId) { location.hash = `#/doc/${encodeURIComponent(dsId)}/${encodeURIComponent(docId)}`; route(); },
+    refresh: () => route(),
+  };
+}
+
+async function openFeature(name) {
+  stopPlayer();
+  try {
+    if (name === "create") (await import("./create/create.js")).openCreate(featureApi());
+  } catch (err) {
+    dialog("無法開啟這個功能", el("p", {}, "需要網路才能第一次載入。"), el("p", { class: "hint" }, String(err.message || err)));
+  }
+}
+
 // ---------- helpers ----------
 function el(tag, attrs = {}, ...children) {
   const e = document.createElement(tag);
@@ -189,6 +214,7 @@ window.addEventListener("hashchange", route);
 
 // ---------- home ----------
 function renderHome() {
+  renderSeq++;
   $("#title").textContent = "Sing-along";
   $("#back").hidden = true;
   view.replaceChildren();
@@ -200,7 +226,9 @@ function renderHome() {
         "。步驟見 ", el("a", { href: DOCS_URL + "getting-started.md", target: "_blank", rel: "noopener" }, "入門教學"),
         "；想自己產生檔案，格式見 ", el("a", { href: DOCS_URL + "web-data-format.md", target: "_blank", rel: "noopener" }, "資料檔格式"), "。"),
       el("p", {}, "資料只會存在這個裝置上，不會上傳。"),
-      el("button", { class: "primary", onclick: () => $("#file").click() }, "匯入資料檔")));
+      el("button", { class: "primary", onclick: () => $("#file").click() }, "匯入資料檔"),
+      FEATURES.create ? el("p", {}, el("button", { class: "secondary", onclick: () => openFeature("create") },
+        "或者：在這裡自己建立一首歌")) : null));
     return;
   }
   const often = renderOftenLooked();
@@ -226,6 +254,7 @@ function renderHome() {
   }
   view.append(el("div", { class: "home-actions" },
     el("button", { class: "secondary", onclick: () => $("#file").click() }, "匯入或更新資料檔（songs.json）"),
+    FEATURES.create ? el("button", { class: "secondary", onclick: () => openFeature("create") }, "在這裡建立一首歌") : null,
     el("p", { class: "hint" }, "同名的資料檔會被更新，不同名的會新增在上面；已學會的詞所有資料共用。")));
 }
 
@@ -240,7 +269,10 @@ async function removeDataset(id) {
 }
 
 // ---------- song ----------
+let renderSeq = 0;   // a newer render wins when two overlap (renderDoc waits for storage before drawing)
+
 async function renderDoc(dsId, ds, doc) {
+  const seq = ++renderSeq;
   data = ds;
   $("#title").textContent = doc.title;
   $("#back").hidden = false;
@@ -249,6 +281,7 @@ async function renderDoc(dsId, ds, doc) {
   applyPrefClasses(root);
 
   const local = await kvGet(mediaKey(doc)).catch(() => null);
+  if (seq !== renderSeq) return;
   const youtube = doc.media && doc.media.kind === "youtube" ? doc.media.uri : null;
   const timed = doc.lines.some((l) => l.start !== null && l.start !== undefined);
   const stick = el("div", { class: "stick" });             // player + toolbar stay under the top bar
@@ -785,6 +818,9 @@ function openRateSettings() {
 
 // ---------- menu & import/export ----------
 $("#back").addEventListener("click", () => { location.hash = ""; });
+if (FEATURES.create) {   // optional feature
+  $("#menu").insertBefore(el("button", { "data-action": "create" }, "建立歌曲…"), $('#menu [data-action="rates"]'));
+}
 $("#menu-btn").addEventListener("click", (ev) => { ev.stopPropagation(); $("#menu").hidden = !$("#menu").hidden; });
 document.addEventListener("click", () => { $("#menu").hidden = true; });
 $("#menu").addEventListener("click", async (ev) => {
@@ -792,6 +828,7 @@ $("#menu").addEventListener("click", async (ev) => {
   if (action === "home") location.hash = "";
   if (action === "import") $("#file").click();
   if (action === "rates") openRateSettings();
+  if (action === "create") openFeature("create");   // optional feature
   if (action === "ask") openAskSettings();
   if (action === "import-known") $("#known-file").click();
   if (action === "export-known") {
