@@ -242,6 +242,22 @@ uv run vm web                        # 在網頁裡「更新資料」
 
 索引只會重新處理有變動的素材，所以素材變多也不會越跑越慢。
 
+## 12. 從 YouTube 播放清單開始
+
+跟唱網頁播的是 YouTube 影片，所以「一個播放清單」很適合當收集素材的起點。需要 yt-dlp（`uv sync --extra youtube`，或每次用 `uv run --with yt-dlp vm ...`）。
+
+```bash
+uv run vm yt-list "https://www.youtube.com/playlist?list=..." -o data/raw/youtube/mylist.tsv   # 影片清單（不下載任何東西）
+uv run vm yt-subs data/raw/youtube/mylist.tsv                                                  # 下載字幕 -> data/raw/youtube/subs/<影片ID>.vtt
+```
+
+- `yt-subs` 只下載上傳者提供的字幕軌，不下載影片；已下載的會跳過，每支影片之間停 3 秒。
+  也接受網址、影片 ID，或一行一個網址的文字檔。
+- 結果寫在 `subs/report.tsv`：`subtitles`（上傳者的字幕）、`auto-available`（只有自動產生的字幕，加 `--auto` 才下載；
+  辨識歌聲常常出錯）、`none`（沒有字幕，之後可以用 Whisper 轉寫）。
+- 檔名就是影片 ID，在 source 的 `youtube` 選項裡把它對到同一支影片，每句就能跳到影片的對應時間。
+- 請只把下載的字幕用在自己的學習，不要散布。
+
 ---
 
 ## 常見狀況

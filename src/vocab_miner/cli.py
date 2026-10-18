@@ -1,6 +1,7 @@
 """Command line interface: uv run vm <command>."""
 from __future__ import annotations
 
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -399,3 +400,51 @@ def gloss_import(
 
 if __name__ == "__main__":
     app()
+
+
+# ---------- YouTube: playlist -> video list -> subtitles ----------
+
+YT_DIR = Path("data") / "raw" / "youtube"
+
+
+@app.command(name="yt-list")
+def yt_list(
+    playlist: Annotated[str, typer.Argument(help="YouTube playlist url.")],
+    output: Annotated[Path | None, typer.Option("-o", "--output",
+                                                help="List file (default: data/raw/youtube/<playlist id>.tsv).")] = None,
+):
+    """List the videos of a playlist (id, title, channel, length, url) without downloading anything."""
+    from .fetch import youtube
+    try:
+        title, entries = youtube.playlist_entries(playlist)
+    except ImportError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    m = re.search(r"[?&]list=([\w-]+)", playlist)
+    out = output or YT_DIR / f"{m.group(1) if m else 'playlist'}.tsv"
+    youtube.write_list(out, entries)
+    typer.echo(f"{title}: {len(entries)} videos -> {out}")
+
+
+@app.command(name="yt-subs")
+def yt_subs(
+    items: Annotated[list[str], typer.Argument(help="List files from yt-list, text files of urls, or urls / ids.")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Folder for <video id>.vtt files.")] = YT_DIR / "subs",
+    lang: Annotated[str, typer.Option(help="Subtitle language.")] = "en",
+    auto: Annotated[bool, typer.Option(help="Fall back to auto-generated captions (often wrong for songs).")] = False,
+):
+    """Download the subtitle track of each video (never the video). Already downloaded videos are skipped."""
+    from .fetch import youtube
+    try:
+        targets = youtube.read_targets(items)
+        results = youtube.download_subtitles(
+            targets, output, lang=lang, auto=auto,
+            progress=lambda n, total, r: typer.echo(f"[{n}/{total}] {r.id} {r.title[:40]:<40} {r.status} {r.detail}"))
+    except (ImportError, ValueError) as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    youtube.write_report(output / "report.tsv", results)
+    counts = Counter(r.status for r in results)
+    typer.echo("\n" + " · ".join(f"{k} {v}" for k, v in sorted(counts.items())) + f" -> {output / 'report.tsv'}")
+    if counts.get("auto-available"):
+        typer.echo("Some videos only have auto-generated captions; add --auto to download them anyway.")

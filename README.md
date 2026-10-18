@@ -11,6 +11,7 @@
 先統計素材裡實際出現的詞，依頻率和覆蓋率決定學習順序；每個詞都附上素材裡的原句當例句，有聲音時還能直接跳到那一句的時間點。
 
 1. 把任何素材轉成句子（`Utterance` JSONL）：純文字、字幕檔（.lrc / .srt / .vtt），或用 Whisper 轉寫自己錄的影片。
+   也可以從 YouTube 播放清單開始：`vm yt-list` 列出影片、`vm yt-subs` 下載字幕（見 docs/getting-started.md）。
 2. 分詞、統計、依頻率與覆蓋率排序。
 3. 產生詞彙表：讀音、好讀的拼音、釋義，以及從你自己的素材挑出的例句（有聲音時附時間點連結）。
 4. 匯出成 CSV 或 Anki。
@@ -151,6 +152,7 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
 Learn a language from the media you are actually consuming — songs, games, shows, books.
 
 1. Turn any material into sentences (`Utterance` JSONL): plain text, subtitle files (.lrc/.srt/.vtt), or Whisper transcriptions of your own recordings.
+   A YouTube playlist works as a starting point: `vm yt-list` lists the videos, `vm yt-subs` downloads their subtitle tracks.
 2. Tokenize, count, and rank words by frequency and coverage.
 3. Get a vocabulary list with readings, learner-friendly romanization, glosses, and example sentences picked from your own material — with a link to the exact moment in the audio when available.
 4. Export to CSV or Anki.
