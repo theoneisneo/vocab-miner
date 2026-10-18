@@ -448,3 +448,60 @@ def yt_subs(
     typer.echo("\n" + " · ".join(f"{k} {v}" for k, v in sorted(counts.items())) + f" -> {output / 'report.tsv'}")
     if counts.get("auto-available"):
         typer.echo("Some videos only have auto-generated captions; add --auto to download them anyway.")
+
+
+AUDIO_SUFFIXES = (".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg", ".opus", ".webm", ".mp4", ".mkv")
+
+
+@app.command(name="transcribe")
+def transcribe_cmd(
+    items: Annotated[list[str], typer.Argument(
+        help="Audio/video files, or YouTube urls / ids / list files from yt-list (their audio is downloaded).")],
+    lyrics: Annotated[Path | None, typer.Option(
+        help="Folder with lyrics text <name>.txt (no timing). Matching files get Whisper's timing; "
+             "results are written here too.")] = None,
+    output: Annotated[Path | None, typer.Option("-o", "--output",
+                                                help="Folder for .lrc results (default: --lyrics or data/raw/transcripts).")] = None,
+    lang: Annotated[str, typer.Option(help="Language spoken/sung.")] = "en",
+    model: Annotated[str, typer.Option(help="Whisper model.")] = "large-v3",
+    force: Annotated[bool, typer.Option(help="Redo items that already have timed lyrics/subtitles.")] = False,
+):
+    """Timed .lrc from audio with Whisper. With lyrics text, only the timing comes from Whisper."""
+    from . import transcribe as tr
+    from .fetch import youtube
+    out = output or lyrics or Path("data") / "raw" / "transcripts"
+    out.mkdir(parents=True, exist_ok=True)
+    jobs: list[tuple[str, str, Path | None]] = []     # (name, title, local audio or None for YouTube)
+    try:
+        for item in items:
+            p = Path(item)
+            if p.is_file() and p.suffix.lower() in AUDIO_SUFFIXES:
+                jobs.append((p.stem, p.stem, p))
+            else:
+                jobs += [(vid, title, None) for vid, title in youtube.read_targets([item])]
+    except ValueError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    todo = [j for j in jobs if force or not any((out / f"{j[0]}{s}").exists() for s in (".lrc", ".vtt", ".srt"))]
+    typer.echo(f"{len(todo)} to do, {len(jobs) - len(todo)} already timed in {out}")
+    if not todo:
+        return
+    try:
+        whisper = tr.load_model(model)
+    except ImportError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    for n, (name, title, audio) in enumerate(todo, 1):
+        try:
+            audio = audio or youtube.download_audio(name, Path("data") / "raw" / "youtube" / "audio")
+        except Exception as e:  # noqa: BLE001 - one unavailable video should not stop the rest
+            typer.secho(f"[{n}/{len(todo)}] {name} {title[:40]:<40} no audio: {str(e).splitlines()[0]}", fg="red")
+            continue
+        words, heard = tr.transcribe(whisper, audio, lang)
+        text_file = (lyrics / f"{name}.txt") if lyrics else None
+        if text_file and text_file.is_file():
+            lines, kind = tr.align(tr.read_lyrics(text_file), words), "lyrics timed"
+        else:
+            lines, kind = heard, "transcribed (check for mistakes)"
+        (out / f"{name}.lrc").write_text(tr.to_lrc(lines, title, transcribed=kind != "lyrics timed"), encoding="utf-8")
+        typer.echo(f"[{n}/{len(todo)}] {name} {title[:40]:<40} {len(lines)} lines, {kind}")

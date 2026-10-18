@@ -12,6 +12,7 @@
 
 1. 把任何素材轉成句子（`Utterance` JSONL）：純文字、字幕檔（.lrc / .srt / .vtt），或用 Whisper 轉寫自己錄的影片。
    也可以從 YouTube 播放清單開始：`vm yt-list` 列出影片、`vm yt-subs` 下載字幕（見 docs/getting-started.md）。
+   沒有時間軸的歌詞或沒有字幕的影片，用 `vm transcribe`（Whisper，本機 GPU）補上時間或轉寫。
 2. 分詞、統計、依頻率與覆蓋率排序。
 3. 產生詞彙表：讀音、好讀的拼音、釋義，以及從你自己的素材挑出的例句（有聲音時附時間點連結）。
 4. 匯出成 CSV 或 Anki。
@@ -153,6 +154,7 @@ Learn a language from the media you are actually consuming — songs, games, sho
 
 1. Turn any material into sentences (`Utterance` JSONL): plain text, subtitle files (.lrc/.srt/.vtt), or Whisper transcriptions of your own recordings.
    A YouTube playlist works as a starting point: `vm yt-list` lists the videos, `vm yt-subs` downloads their subtitle tracks.
+   `vm transcribe` (Whisper, local GPU) times plain lyrics or transcribes videos without subtitles.
 2. Tokenize, count, and rank words by frequency and coverage.
 3. Get a vocabulary list with readings, learner-friendly romanization, glosses, and example sentences picked from your own material — with a link to the exact moment in the audio when available.
 4. Export to CSV or Anki.

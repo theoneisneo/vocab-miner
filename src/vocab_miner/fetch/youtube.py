@@ -151,3 +151,31 @@ def write_report(path: Path, results: Iterable[SubResult]) -> None:
         w = csv.writer(f, delimiter="\t", lineterminator="\n")
         w.writerow(["id", "title", "status", "detail"])
         w.writerows([r.id, r.title, r.status, r.detail] for r in results)
+
+
+# ---------- audio (for transcription) ----------
+
+def download_audio(vid: str, out: Path, ydl_factory: Callable | None = None) -> Path:
+    """Audio track only, as <out>/<id>.<ext>; reused if already there."""
+    out.mkdir(parents=True, exist_ok=True)
+    have = [p for p in out.glob(f"{vid}.*") if p.suffix not in (".part", ".ytdl")]
+    if have:
+        return have[0]
+    factory = ydl_factory or _yt_dlp().YoutubeDL
+    # YouTube sometimes answers 403 for a moment: try again, then fall back to the HLS stream (audio + video)
+    formats = ["bestaudio[ext=m4a]/bestaudio", "bestaudio[ext=m4a]/bestaudio", "best[protocol^=m3u8]"]
+    error: Exception | None = None
+    for k, fmt in enumerate(formats):
+        if k:
+            time.sleep(PAUSE)
+        try:
+            with factory({"quiet": True, "no_warnings": True, "noprogress": True, "format": fmt,
+                          "outtmpl": str(out / f"{vid}.%(ext)s")}) as ydl:
+                ydl.download([watch_url(vid)])
+        except Exception as e:  # noqa: BLE001 - yt-dlp's DownloadError; retried below
+            error = e
+            continue
+        have = [p for p in out.glob(f"{vid}.*") if p.suffix not in (".part", ".ytdl")]
+        if have:
+            return have[0]
+    raise RuntimeError(f"no audio downloaded for {vid}: {error}")

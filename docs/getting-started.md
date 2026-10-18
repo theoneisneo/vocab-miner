@@ -258,6 +258,21 @@ uv run vm yt-subs data/raw/youtube/mylist.tsv                                   
 - 檔名就是影片 ID，在 source 的 `youtube` 選項裡把它對到同一支影片，每句就能跳到影片的對應時間。
 - 請只把下載的字幕用在自己的學習，不要散布。
 
+## 13. 沒有時間軸：用 Whisper 產生
+
+需要 `uv sync --extra whisper`（faster-whisper；有 NVIDIA 顯示卡時會用 GPU，第一次會下載約 1.2 GB 的 CUDA 套件和約 3 GB 的模型）。
+
+```bash
+uv run vm transcribe data/raw/youtube/mylist.tsv --lyrics data/raw/mylyrics   # YouTube 清單：自動下載音訊
+uv run vm transcribe recordings/*.mp4 -o data/raw/transcripts                 # 自己的錄音／錄影
+```
+
+- **有歌詞文字、沒有時間軸**：把歌詞存成 `--lyrics` 資料夾裡的 `<影片ID或檔名>.txt`（一行一句）。
+  Whisper 只提供時間，每一句都保留你給的文字。
+- **完全沒有文字**：用 Whisper 聽寫的結果。歌聲常會聽錯，檔頭會標明是轉寫，請對照原曲修正。
+- 結果寫成 `<名稱>.lrc`，可以直接手動修改，再用 `LrcSource` 匯入。已經有 `.lrc`／`.vtt`／`.srt` 的會跳過（`--force` 重做）。
+- 一首歌在 RTX 3090 上約 40 秒；沒有 GPU 也能跑，但慢很多（可以用 `--model small` 加快）。
+
 ---
 
 ## 常見狀況
