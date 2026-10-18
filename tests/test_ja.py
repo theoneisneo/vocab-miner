@@ -137,3 +137,11 @@ def test_te_form_auxiliaries_become_grammar_patterns(tok):
     assert {t.lemma for t in tok.tokenize("見て見る") if t.pos == "AUX"} == {"〜てみる"}     # kana name
     assert {t.lemma for t in tok.tokenize("来ていい") if t.pos == "AUX"} == {"〜ていい"}
     assert HepburnRomanizer().romanize_tokens(tok.tokenize("食べてしまった")) == "tabete shimatta"
+
+
+def test_suffixes_are_separate_words(tok):
+    by_surface = {t.surface: t for t in tok.tokenize("美しさが好きだ")}
+    assert by_surface["さ"].lemma == "〜さ" and by_surface["さ"].pos == "NOUN"
+    particle = [t for t in tok.tokenize("行くのさ") if t.surface == "さ"]
+    assert particle and particle[0].lemma == "さ"                       # the sentence-final particle stays itself
+    assert particle[0].key != by_surface["さ"].key

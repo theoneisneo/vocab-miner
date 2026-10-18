@@ -41,7 +41,9 @@ def _word(e: VocabEntry, grammar: bool, labels: dict[str, str]) -> dict:
     zh = e.gloss.get("zh-Hant", "")
     return {
         "key": e.key, "lemma": e.lemma, "reading": e.reading or "", "romaji": e.romaji or "",
-        "pos": e.pos_label or e.pos, "upos": e.pos, "short": (labels.get(e.lemma) if grammar else None) or short_gloss(zh),
+        "pos": e.pos_label or e.pos, "upos": e.pos,
+        # a short meaning written in the gloss table wins, then the grammar label, then the gloss's first sense
+        "short": e.gloss.get("zh-Hant:short") or (labels.get(e.lemma) if grammar else None) or short_gloss(zh),
         "zh": zh, "en": e.gloss.get("en", ""),
         "ff": e.false_friend or "", "rank": e.rank, "count": e.count, "docFreq": e.doc_freq,
         "grammar": grammar, "status": e.status,

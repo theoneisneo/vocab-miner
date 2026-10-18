@@ -61,6 +61,16 @@ def _clean_lemma(lemma: str) -> str:
     return lemma.split("-", 1)[0] if "-" in lemma and not lemma.startswith("-") else lemma
 
 
+def _suffixes(tokens: list[Token]) -> list[Token]:
+    """Suffixes get a leading 〜 (美しさ -> 美し + 〜さ, 僕ら -> 僕 + 〜ら).
+
+    Without it a suffix shares its entry with a different word spelled the same way: the noun-forming 〜さ
+    would be counted and glossed as the sentence-final particle さ.
+    """
+    return [Token(**{**t.__dict__, "lemma": "〜" + t.lemma, "base": "〜" + (t.base or t.lemma)})
+            if t.pos_native.startswith("接尾辞") and not t.lemma.startswith("〜") else t for t in tokens]
+
+
 def _te_auxiliaries(tokens: list[Token]) -> list[Token]:
     """Verbs (and ほしい) used as auxiliaries after the te-form become grammar entries named after the pattern.
 
@@ -100,7 +110,7 @@ def _modern_lemma(lemma: str, base: str, lemma_reading: str | None, surface: str
 
 class JapaneseTokenizer:
     lang = "ja"
-    version = "7"           # bump when tokenization or reading alignment changes, so indexes get rebuilt
+    version = "8"           # bump when tokenization or reading alignment changes, so indexes get rebuilt
     word_pattern = WORD
 
     def __init__(self, names: Iterable[str] = ()):
@@ -120,7 +130,7 @@ class JapaneseTokenizer:
 
     def tokenize(self, text: str) -> list[Token]:
         if not self._names_re:
-            return _te_auxiliaries(self._tag(text, 0))
+            return _suffixes(_te_auxiliaries(self._tag(text, 0)))
         out: list[Token] = []
         pos = 0
         for m in self._names_re.finditer(text):
@@ -132,7 +142,7 @@ class JapaneseTokenizer:
                              base=name, lemma_reading=reading))
             pos = m.end()
         out += self._tag(text[pos:], pos)
-        return _te_auxiliaries(out)
+        return _suffixes(_te_auxiliaries(out))
 
     def _tag(self, text: str, offset: int) -> list[Token]:
         tokens: list[Token] = []

@@ -218,3 +218,13 @@ def test_tsv_gloss_pos_disambiguates(tmp_path):
     assert d.lookup("無い", "ない", "AUX", base="ない") == {"en": "not"}
     assert d.lookup("無い", "ない", "ADJ", base="ない") == {"en": "nonexistent"}
     assert d.lookup("雨", "あめ", "NOUN") == {"en": "rain"}                 # rows without pos match any pos
+
+
+def test_tsv_short_column(tmp_path):
+    path = tmp_path / "g.tsv"
+    append_rows(path, [{"lemma": "セーブ", "reading": "せーぶ", "gloss": "節省；存檔", "short": "保存"},
+                       {"lemma": "雨", "reading": "あめ", "gloss": "雨"}])
+    d = TsvGlossDictionary(path, "zh-Hant")
+    assert d.lookup("セーブ", "せーぶ") == {"zh-Hant": "節省；存檔", "zh-Hant:short": "保存"}
+    assert d.lookup("雨", "あめ") == {"zh-Hant": "雨"}                       # no short: none returned
+    assert read_rows(path)[0]["short"] == "保存"
