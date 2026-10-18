@@ -29,6 +29,15 @@ def test_align_stays_in_order_with_repeated_lines():
     assert [round(ln.start) for ln in lines] == [0, 5, 9]
 
 
+def test_align_japanese_character_by_character():
+    # Whisper splits Japanese into pieces that do not follow the lyric lines; kana vs kanji may differ
+    heard = [Word("きょうは", 1.0, 2.0), Word("雨が", 2.0, 3.0), Word("ふる", 3.0, 3.5),
+             Word("あしたは", 8.0, 9.0), Word("晴れ", 9.0, 10.0)]
+    lines = align(["今日は雨が降る", "明日は晴れ"], heard)
+    assert (lines[0].start, lines[0].end) == (1.0, 3.5)       # matched on は・雨・が・る
+    assert (lines[1].start, lines[1].end) == (8.0, 10.0)      # matched on は・晴・れ
+
+
 def test_lrc_closes_lines_before_long_pauses_and_round_trips():
     lines = [Line("first", 1.0, 3.0), Line("second", 3.5, 5.0), Line("third", 20.0, 22.5)]
     text = to_lrc(lines, title="Demo")

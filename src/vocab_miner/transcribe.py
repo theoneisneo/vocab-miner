@@ -83,25 +83,27 @@ def transcribe(model, audio: Path, lang: str) -> tuple[list[Word], list[Line]]:
 
 # ---------- aligning given lyrics to Whisper's words ----------
 
-def _norm(w: str) -> str:
-    return re.sub(r"[^\w]", "", w.lower())
+# one kana/kanji character, or a run of Latin letters/digits: languages without spaces are compared
+# character by character, others word by word
+TOKEN = re.compile(r"[぀-ヿ㐀-鿿豈-﫿]|[0-9A-Za-zÀ-ɏ]+")
 
 
 def _tokens(text: str) -> list[str]:
-    return [t for t in (_norm(w) for w in re.split(r"[\s\-‐-―]+", text)) if t]
+    return [t.lower() for t in TOKEN.findall(text.replace("'", "").replace("’", ""))]
 
 
 def align(lyrics: list[str], words: list[Word]) -> list[Line]:
     """Give each lyric line the time of its words that Whisper heard; lines with no match are spread evenly
-    between their timed neighbours."""
+    between their timed neighbours. Whisper's words are split like the lyrics (characters for Japanese)
+    and each piece keeps the time of its word."""
     lines = [ln.strip() for ln in lyrics if ln.strip()]
     flat = [(i, t) for i, ln in enumerate(lines) for t in _tokens(ln)]
-    heard = [_norm(w.text) for w in words]
+    heard = [(t, wi) for wi, w in enumerate(words) for t in _tokens(w.text)]
     match: dict[int, int] = {}
-    sm = difflib.SequenceMatcher(None, [t for _, t in flat], heard, autojunk=False)
+    sm = difflib.SequenceMatcher(None, [t for _, t in flat], [t for t, _ in heard], autojunk=False)
     for a, b, size in sm.get_matching_blocks():
         for k in range(size):
-            match[a + k] = b + k
+            match[a + k] = heard[b + k][1]
     spans: list[tuple[float, float] | None] = []
     for i in range(len(lines)):
         hits = [match[k] for k, (li, _) in enumerate(flat) if li == i and k in match]

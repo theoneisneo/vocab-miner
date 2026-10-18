@@ -257,7 +257,8 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .song-sep .order-controls { order: 2; }
 .sep-label:empty { display: none; }
 .song-row { display: flex; align-items: center; gap: 6px; }
-.song-row .song { flex: 1; cursor: default; }
+.song-row .song { flex: 1; min-width: 0; }
+.song-row div.song { cursor: default; }
 .order-controls { display: inline-flex; gap: 2px; }
 .order-controls .icon-btn:disabled { opacity: .25; }
 .sheet-origin { font-size: 13px; color: var(--accent); margin: 2px 0; }
@@ -267,3 +268,19 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 
 /* space-separated languages: punctuation and clitics (, 's n't) stay attached to the word before */
 .show-gloss .w.tight { margin-left: -3px; }
+
+/* home: tabs 全部 | 最愛, album groups, favourites */
+.tabs { display: flex; gap: 4px; margin: 6px 0 8px; border-bottom: 1px solid var(--line); }
+.tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 14px; font: inherit; color: var(--muted); cursor: pointer; }
+.tab[aria-selected="true"] { color: var(--text, inherit); border-bottom-color: var(--accent); font-weight: 600; }
+.sort-row, .album-jump { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; }
+.sort-row .small-chip, .album-jump .small-chip { margin: 0; }
+.songs.album { scroll-margin-top: 64px; }
+.album-head { margin-top: 14px; }
+.album-toggle { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; padding: 4px 0; font: inherit; color: inherit; cursor: pointer; }
+.album-toggle .sep-label { font-weight: 600; color: var(--text, inherit); }
+.album-toggle::after { content: ""; flex: 1; border-top: 1px solid var(--line); order: 1; }
+.album-count { order: 2; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.star { color: var(--muted); font-size: 18px; }
+.star.on { color: #e0a800; }
+.fav-empty { margin: 12px 2px; }

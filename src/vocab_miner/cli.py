@@ -196,6 +196,17 @@ def web(
                           title=title or cfg.get("web", {}).get("title", ""),
                           romanize_token_list=getattr(romanizer, "romanize_token_list", None),
                           explanations=explanations, foreign=res.foreign)
+    wcfg = cfg.get("web", {})
+    if wcfg.get("playlists"):            # albums: [web] playlists = "data/playlists.txt"
+        from .albums import build_albums
+        from .fetch.youtube import read_playlists
+        data["albums"] = build_albums(read_playlists(cfg.resolve(wcfg["playlists"])), cfg.get("target_lang", "ja"),
+                                      cfg.resolve(wcfg.get("playlist_dir", "data/raw/youtube")), data["docs"],
+                                      wcfg.get("title_aliases"))
+        placed = {d for a in data["albums"] for d in a["docs"]}
+        other = [d["title"] for d in data["docs"] if d["id"] not in placed]
+        typer.echo("albums: " + ", ".join(f"{a['title']} ({len(a['docs'])})" for a in data["albums"])
+                   + (f"; not in an album: {', '.join(other)}" if other else ""))
     path = out or cfg.out_dir / "web" / "songs.json"
     write_web_data(data, path)
     typer.echo(f"{len(data['docs'])} docs, {len(utts)} lines, {len(data['words'])} words -> {path} "
@@ -507,3 +518,30 @@ def transcribe_cmd(
         typer.echo(f"[{n}/{len(todo)}] {name} {title[:40]:<40} {len(lines)} lines, {kind}")
         if not tr.looks_like(" ".join(w.text for w in words), lang):
             typer.secho(f"    Whisper did not hear {lang} here: the audio may be in another language", fg="yellow")
+
+
+@app.command(name="yt-playlists")
+def yt_playlists(
+    file: Annotated[Path, typer.Argument(help="Text file: one 'language | album | playlist url' per line.")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Folder for the list files.")] = YT_DIR,
+    refresh: Annotated[bool, typer.Option(help="Fetch lists again even if already saved.")] = False,
+):
+    """Save the video list of every playlist in FILE (as yt-list does). `vm web` uses the albums from it."""
+    from .fetch import youtube
+    try:
+        playlists = youtube.read_playlists(file)
+    except ValueError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    for pl in playlists:
+        path = youtube.list_file(output, pl)
+        if path.exists() and not refresh:
+            typer.echo(f"{pl.lang} {pl.album or '-':<14} cached  {path}")
+            continue
+        try:
+            title, entries = youtube.playlist_entries(pl.url)
+        except ImportError as e:
+            typer.secho(str(e), fg="red", err=True)
+            raise typer.Exit(1)
+        youtube.write_list(path, entries)
+        typer.echo(f"{pl.lang} {pl.album or '-':<14} {len(entries):3d} videos  {path}  ({title})")

@@ -68,8 +68,8 @@ const langName = (ds) => LANG_NAMES[(ds && ds.lang || "").split("-")[0]] || "外
 const SPACED_LANGS = new Set(["en", "ko", "fr", "de", "es", "it", "pt", "nl", "vi", "id"]);
 let known = new Map();      // word key -> true/false (overrides status from the data files; shared by all datasets)
 let lookups = new Map();    // word key -> how many times the word card was opened (words you keep checking)
-let layouts = new Map();    // dataset id -> your own song order with separators: [{t:"doc", id} | {t:"sep", label}]
-let editingLayout = null;   // dataset id whose order is being edited on the home page
+let favorites = new Map();  // dataset id -> favourite songs in your order, with separators: [{t:"doc", id} | {t:"sep", label}]
+let editingFav = null;      // dataset id whose favourites are being arranged
 let player = null, ticker = null, currentLine = -1, loopLine = -1;
 
 function isKnown(w) {
@@ -174,6 +174,7 @@ function validate(d) {
   if (d.version !== 1) p.push(`version 應該是 1，這個檔案是 ${JSON.stringify(d.version)}（可能是較新或較舊的工具產生的）。`);
   if (!Array.isArray(d.words)) p.push("缺少 words 陣列（詞彙清單）。");
   if (!Array.isArray(d.docs) || !d.docs.length) p.push("缺少 docs 陣列，或裡面沒有任何歌曲。");
+  if (d.albums !== undefined && !Array.isArray(d.albums)) p.push("albums 應該是陣列（專輯分組，選填）。");
   if (p.length) return p;
   d.words.forEach((w, i) => {
     if (p.length < 8 && (!w || typeof w.key !== "string" || typeof w.lemma !== "string"))
@@ -222,6 +223,7 @@ function renderHome() {
   renderSeq++;
   $("#title").textContent = "Sing-along";
   $("#back").hidden = true;
+  $("#fav-btn").hidden = true;
   view.replaceChildren();
   if (!datasets.size) {
     view.append(el("div", { class: "empty" },
@@ -238,116 +240,177 @@ function renderHome() {
   }
   const often = renderOftenLooked();
   if (often) view.append(often);
-  for (const [id, ds] of datasets) {
-    const custom = layouts.has(id);
-    const editing = editingLayout === id;
-    const content = ds.words.filter((w) => !w.grammar && !w.foreign);
-    view.append(el("section", { class: "dataset" + (editing ? " editing" : "") },
-      el("div", { class: "dataset-head" },
-        el("h2", {}, ds.title || id),
-        el("button", { class: "chip small-chip", "aria-pressed": String(editing),
-          onclick: () => { editingLayout = editing ? null : id; renderHome(); } }, editing ? "完成" : "排列"),
-        el("button", { class: "icon-btn small", "aria-label": `移除 ${ds.title || id}`, onclick: () => removeDataset(id) }, "✕")),
-      el("div", { class: "section-title" },
-        `已學會 ${content.filter(isKnown).length} / ${content.length} 個詞 · 產生於 ${(ds.generated || "").slice(0, 10)} · `
-        + (custom ? "自訂順序" : "越上面越容易學")),
-      editing ? el("div", { class: "layout-actions" },
-        el("button", { class: "secondary", onclick: () => addSeparator(id, ds) }, "＋ 加分隔線"),
-        custom ? el("button", { class: "secondary", onclick: () => resetLayout(id) }, "恢復自動排序") : null,
-        el("p", { class: "hint" }, "用 ↑ ↓ 調整順序；分隔線可以命名（例如「這週」「演唱會曲目」），可以加很多條。")) : null,
-      renderSongList(id, ds, editing)));
-  }
+  for (const [id, ds] of datasets) view.append(renderDataset(id, ds));
   view.append(el("div", { class: "home-actions" },
     el("button", { class: "secondary", onclick: () => $("#file").click() }, "匯入或更新資料檔（songs.json）"),
     FEATURES.create ? el("button", { class: "secondary", onclick: () => openFeature("create") }, "在這裡建立一首歌") : null,
     el("p", { class: "hint" }, "同名的資料檔會被更新，不同名的會新增在上面；已學會的詞所有資料共用。")));
 }
 
-// ---------- your own song order ----------
+// ---------- songs of a data file: all (by album or by difficulty) | favourites ----------
 
-/** Songs (and separators) of a data file in display order: your saved order, or easiest-first. */
-function datasetItems(id, ds) {
+/** How the home page shows a data file (remembered on this device): tab, sort and folded albums. */
+function homeView(id) {
+  prefs.home = prefs.home || {};
+  return (prefs.home[id] = Object.assign({ tab: "all", sort: "album", folded: [] }, prefs.home[id]));
+}
+
+function setHomeView(id, change) {
+  Object.assign(homeView(id), change);
+  savePrefs();
+  renderHome();
+}
+
+function renderDataset(id, ds) {
+  const v = homeView(id);
+  const content = ds.words.filter((w) => !w.grammar && !w.foreign);
+  const favCount = favItems(id, ds).filter((it) => it.t === "doc").length;
+  const tab = (key, label) => el("button", { class: "tab", role: "tab", "aria-selected": String(v.tab === key),
+    onclick: () => { editingFav = null; setHomeView(id, { tab: key }); } }, label);
+  return el("section", { class: "dataset" },
+    el("div", { class: "dataset-head" },
+      el("h2", {}, ds.title || id),
+      el("button", { class: "icon-btn small", "aria-label": `移除 ${ds.title || id}`, onclick: () => removeDataset(id) }, "✕")),
+    el("div", { class: "section-title" },
+      `已學會 ${content.filter(isKnown).length} / ${content.length} 個詞 · 產生於 ${(ds.generated || "").slice(0, 10)}`),
+    el("div", { class: "tabs", role: "tablist" }, tab("all", "全部"), tab("fav", `★ 最愛${favCount ? ` ${favCount}` : ""}`)),
+    v.tab === "fav" ? renderFavorites(id, ds) : renderAll(id, ds, v));
+}
+
+/** Album groups: each doc under the first album that lists it; the rest under "其他". */
+function albumGroups(ds) {
   const byId = new Map(ds.docs.map((d) => [d.id, d]));
-  if (layouts.has(id)) {
-    const items = layouts.get(id).filter((it) => it.t === "sep" || byId.has(it.id));
-    const placed = new Set(items.filter((it) => it.t === "doc").map((it) => it.id));
-    for (const d of ds.docs) if (!placed.has(d.id)) items.push({ t: "doc", id: d.id });   // songs added later
-    return items;
+  const placed = new Set();
+  const groups = [];
+  for (const a of Array.isArray(ds.albums) ? ds.albums : []) {
+    const docs = (a.docs || []).filter((x) => byId.has(x) && !placed.has(x)).map((x) => byId.get(x));
+    docs.forEach((d) => placed.add(d.id));
+    if (docs.length) groups.push({ id: String(a.id || a.title), title: a.title || a.id, docs });
   }
-  const scored = ds.docs.map((d) => ({ d, s: docStats(ds, d) }));
-  const main = scored.filter((x) => !x.d.noStats).sort((a, b) => b.s.pct - a.s.pct || a.s.fresh - b.s.fresh);
-  const extra = scored.filter((x) => x.d.noStats);
-  return [...main.map((x) => ({ t: "doc", id: x.d.id })),
-    ...(extra.length ? [{ t: "sep", label: "其他版本（不列入統計）" }] : []),
-    ...extra.map((x) => ({ t: "doc", id: x.d.id }))];
+  const rest = ds.docs.filter((d) => !placed.has(d.id));
+  if (rest.length) groups.push({ id: "_other", title: groups.length ? "其他" : "", docs: rest });
+  return groups;
 }
 
-async function saveLayout(id, items) {
-  layouts.set(id, items);
-  await kvSet("layouts", Object.fromEntries(layouts));
+function renderAll(id, ds, v) {
+  const hasAlbums = Array.isArray(ds.albums) && ds.albums.length > 0;
+  const sort = hasAlbums ? v.sort : "easy";
+  const out = [];
+  if (hasAlbums) {
+    const opt = (key, label) => el("button", { class: "chip small-chip", "aria-pressed": String(sort === key),
+      onclick: () => setHomeView(id, { sort: key }) }, label);
+    out.push(el("div", { class: "sort-row" }, el("span", { class: "hint" }, "排序："), opt("album", "專輯"), opt("easy", "難易度")));
+  }
+  if (sort === "easy") {
+    const scored = ds.docs.map((d) => ({ d, s: docStats(ds, d) }));
+    const main = scored.filter((x) => !x.d.noStats).sort((a, b) => b.s.pct - a.s.pct || a.s.fresh - b.s.fresh);
+    const extra = scored.filter((x) => x.d.noStats);
+    out.push(el("p", { class: "hint" }, "越上面越容易學（依已懂比例）"));
+    out.push(el("ul", { class: "songs" },
+      main.map((x) => songRow(id, ds, x.d)),
+      extra.length ? el("li", { class: "song-sep" }, el("span", { class: "sep-label" }, "其他版本（不列入統計）")) : null,
+      extra.map((x) => songRow(id, ds, x.d))));
+    return out;
+  }
+  const groups = albumGroups(ds);
+  const anchor = (g) => `album-${encodeURIComponent(id)}-${encodeURIComponent(g.id)}`;
+  out.push(el("div", { class: "album-jump" }, groups.map((g) => el("button", { class: "chip small-chip",
+    onclick: () => {
+      if (v.folded.includes(g.id)) setHomeView(id, { folded: v.folded.filter((x) => x !== g.id) });
+      document.getElementById(anchor(g))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } }, g.title))));
+  for (const g of groups) {
+    const folded = v.folded.includes(g.id);
+    out.push(el("ul", { class: "songs album" + (folded ? " folded" : ""), id: anchor(g) },
+      el("li", { class: "song-sep album-head" },
+        el("button", { class: "album-toggle", "aria-expanded": String(!folded),
+          onclick: () => setHomeView(id, { folded: folded ? v.folded.filter((x) => x !== g.id) : [...v.folded, g.id] }) },
+          el("span", { class: "sep-label" }, g.title), el("span", { class: "album-count" }, `${g.docs.length} 首 ${folded ? "▸" : "▾"}`))),
+      folded ? null : g.docs.map((d) => songRow(id, ds, d))));
+  }
+  return out;
+}
+
+function songRow(id, ds, d, controls = null) {
+  const s = docStats(ds, d);
+  const body = [
+    el("div", { class: "song-title" }, d.title, el("div", { class: "song-sub" }, `${d.lines.length} 句 · 生詞 ${s.fresh}`)),
+    el("div", { class: "meter" }, `已懂 ${s.pct}%`, el("div", { class: "meter-bar" }, el("span", { style: `width:${s.pct}%` })))];
+  const fav = isFav(id, d.id);
+  return el("li", { class: "song-row" },
+    controls ? el("div", { class: "song" }, ...body) : el("a", { class: "song", href: docRoute(id, d) }, ...body),
+    el("button", { class: "icon-btn small star" + (fav ? " on" : ""), "aria-pressed": String(fav),
+      "aria-label": fav ? `從最愛移除 ${d.title}` : `加入最愛 ${d.title}`,
+      onclick: async () => { await toggleFav(id, d.id); renderHome(); } }, fav ? "★" : "☆"),
+    controls);
+}
+
+// ---------- favourites: your own order with named separators ----------
+
+function favItems(id, ds) {
+  const has = new Set(ds.docs.map((d) => d.id));
+  return (favorites.get(id) || []).filter((it) => it.t === "sep" || has.has(it.id));
+}
+
+function isFav(id, docId) {
+  return (favorites.get(id) || []).some((it) => it.t === "doc" && it.id === docId);
+}
+
+async function saveFavorites(id, items) {
+  favorites.set(id, items);
+  await kvSet("favorites", Object.fromEntries(favorites));
+}
+
+async function toggleFav(id, docId) {
+  const items = favorites.get(id) || [];
+  await saveFavorites(id, isFav(id, docId) ? items.filter((it) => !(it.t === "doc" && it.id === docId))
+    : [...items, { t: "doc", id: docId }]);                       // new favourites go to the end
+}
+
+async function editFav(id, ds, change) {
+  const items = favItems(id, ds);
+  change(items);
+  await saveFavorites(id, items);
   renderHome();
 }
 
-function moveItem(id, ds, i, delta) {
-  const items = datasetItems(id, ds);
-  const j = i + delta;
-  if (j < 0 || j >= items.length) return;
-  [items[i], items[j]] = [items[j], items[i]];
-  saveLayout(id, items);
-}
-
-function addSeparator(id, ds) {
-  const label = prompt("分隔線的名稱（可以留空）", "");
-  if (label === null) return;
-  saveLayout(id, [{ t: "sep", label: label.trim() }, ...datasetItems(id, ds)]);
-}
-
-function renameSeparator(id, ds, i) {
-  const items = datasetItems(id, ds);
-  const label = prompt("分隔線的名稱（可以留空）", items[i].label || "");
-  if (label === null) return;
-  items[i] = { t: "sep", label: label.trim() };
-  saveLayout(id, items);
-}
-
-function removeSeparator(id, ds, i) {
-  const items = datasetItems(id, ds);
-  items.splice(i, 1);
-  saveLayout(id, items);
-}
-
-async function resetLayout(id) {
-  if (!confirm("恢復成依「已懂比例」自動排序？自訂的順序和分隔線會消失。")) return;
-  layouts.delete(id);
-  await kvSet("layouts", Object.fromEntries(layouts));
-  renderHome();
-}
-
-function renderSongList(id, ds, editing) {
+function renderFavorites(id, ds) {
+  const editing = editingFav === id;
+  const items = favItems(id, ds);
   const byId = new Map(ds.docs.map((d) => [d.id, d]));
-  const items = datasetItems(id, ds);
-  const controls = (i, extra = []) => editing ? el("span", { class: "order-controls" },
-    el("button", { class: "icon-btn small", "aria-label": "往上移", disabled: i === 0, onclick: () => moveItem(id, ds, i, -1) }, "↑"),
+  if (!items.some((it) => it.t === "doc")) {
+    return el("p", { class: "hint fav-empty" }, "還沒有最愛的歌。在「全部」或歌曲頁面點 ☆ 加入。");
+  }
+  const name = (old) => { const v = prompt("分隔線的名稱（可以留空）", old); return v === null ? null : v.trim(); };
+  const controls = (i, extra = []) => el("span", { class: "order-controls" },
+    el("button", { class: "icon-btn small", "aria-label": "往上移", disabled: i === 0,
+      onclick: () => editFav(id, ds, (a) => { [a[i - 1], a[i]] = [a[i], a[i - 1]]; }) }, "↑"),
     el("button", { class: "icon-btn small", "aria-label": "往下移", disabled: i === items.length - 1,
-      onclick: () => moveItem(id, ds, i, 1) }, "↓"),
-    ...extra) : null;
-  return el("ul", { class: "songs" }, items.map((it, i) => {
-    if (it.t === "sep") {
-      return el("li", { class: "song-sep" },
-        el("span", { class: "sep-label" }, it.label || ""),
-        controls(i, [
-          el("button", { class: "icon-btn small", "aria-label": "重新命名", onclick: () => renameSeparator(id, ds, i) }, "✎"),
-          el("button", { class: "icon-btn small", "aria-label": "刪除分隔線", onclick: () => removeSeparator(id, ds, i) }, "✕")]));
-    }
-    const d = byId.get(it.id);
-    const s = docStats(ds, d);
-    const body = [
-      el("div", { class: "song-title" }, d.title, el("div", { class: "song-sub" }, `${d.lines.length} 句 · 生詞 ${s.fresh}`)),
-      el("div", { class: "meter" }, `已懂 ${s.pct}%`, el("div", { class: "meter-bar" }, el("span", { style: `width:${s.pct}%` })))];
-    return el("li", { class: editing ? "song-row" : "" },
-      editing ? el("div", { class: "song" }, ...body) : el("a", { class: "song", href: docRoute(id, d) }, ...body),
-      controls(i));
-  }));
+      onclick: () => editFav(id, ds, (a) => { [a[i + 1], a[i]] = [a[i], a[i + 1]]; }) }, "↓"),
+    ...extra);
+  return [
+    el("div", { class: "layout-actions" },
+      el("button", { class: "chip small-chip", "aria-pressed": String(editing),
+        onclick: () => { editingFav = editing ? null : id; renderHome(); } }, editing ? "完成" : "排列"),
+      editing ? el("button", { class: "secondary", onclick: () => {
+        const label = name("");
+        if (label !== null) editFav(id, ds, (a) => a.unshift({ t: "sep", label }));
+      } }, "＋ 加分隔線") : null,
+      editing ? el("p", { class: "hint" }, "用 ↑ ↓ 調整順序；分隔線可以命名（例如「最有興趣」「比較熟」），可以加很多條。") : null),
+    el("ul", { class: "songs" }, items.map((it, i) => {
+      if (it.t === "sep") {
+        return el("li", { class: "song-sep" }, el("span", { class: "sep-label" }, it.label || ""),
+          editing ? controls(i, [
+            el("button", { class: "icon-btn small", "aria-label": "重新命名", onclick: () => {
+              const label = name(it.label || "");
+              if (label !== null) editFav(id, ds, (a) => { a[i] = { t: "sep", label }; });
+            } }, "✎"),
+            el("button", { class: "icon-btn small", "aria-label": "刪除分隔線",
+              onclick: () => editFav(id, ds, (a) => a.splice(i, 1)) }, "✕")]) : null);
+      }
+      return songRow(id, ds, byId.get(it.id), editing ? controls(i) : null);
+    })),
+  ];
 }
 
 async function removeDataset(id) {
@@ -355,7 +418,7 @@ async function removeDataset(id) {
   if (!confirm(`移除「${ds.title || id}」？已學會的詞會保留。`)) return;
   datasets.delete(id);
   await saveDatasets();
-  if (layouts.delete(id)) await kvSet("layouts", Object.fromEntries(layouts));
+  if (favorites.delete(id)) await kvSet("favorites", Object.fromEntries(favorites));
   const stillUsed = new Set([...datasets.values()].flatMap((d) => d.docs.map((x) => x.id)));
   for (const doc of ds.docs) if (!stillUsed.has(doc.id)) await kvDel(mediaKey(doc));
   route();
@@ -369,6 +432,17 @@ async function renderDoc(dsId, ds, doc) {
   data = ds;
   $("#title").textContent = doc.title;
   $("#back").hidden = false;
+  const favBtn = $("#fav-btn");
+  const showFav = () => {
+    const on = isFav(dsId, doc.id);
+    favBtn.textContent = on ? "★" : "☆";
+    favBtn.classList.toggle("on", on);
+    favBtn.setAttribute("aria-pressed", String(on));
+    favBtn.setAttribute("aria-label", on ? "從最愛移除" : "加入最愛");
+  };
+  favBtn.hidden = false;
+  favBtn.onclick = async () => { await toggleFav(dsId, doc.id); showFav(); toast(isFav(dsId, doc.id) ? "已加入最愛" : "已從最愛移除"); };
+  showFav();
   view.replaceChildren();
   const root = el("div", { class: "doc" });
   applyPrefClasses(root);
@@ -1057,7 +1131,8 @@ $("#known-file").addEventListener("change", async (ev) => {
     if (legacy) await kvDel("data");
     known = new Map(Object.entries((await kvGet("known")) || {}));
     lookups = new Map(Object.entries((await kvGet("lookups")) || {}));
-    layouts = new Map(Object.entries((await kvGet("layouts")) || {}));
+    favorites = new Map(Object.entries((await kvGet("favorites")) || {}));
+    kvDel("layouts").catch(() => {});      // the old "arrange all songs" order is replaced by favourites
   } catch (err) {
     toast(`無法讀取本機資料：${err.message}`);
   }

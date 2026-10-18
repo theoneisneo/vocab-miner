@@ -179,3 +179,43 @@ def download_audio(vid: str, out: Path, ydl_factory: Callable | None = None) -> 
         if have:
             return have[0]
     raise RuntimeError(f"no audio downloaded for {vid}: {error}")
+
+
+# ---------- a file of playlists (language | album | url) ----------
+
+LIST_ID = re.compile(r"[?&]list=([\w-]+)")
+
+
+@dataclass
+class Playlist:
+    lang: str
+    album: str          # section name in the app; "" = only a source of songs
+    url: str
+
+    @property
+    def list_id(self) -> str:
+        m = LIST_ID.search(self.url)
+        return m.group(1) if m else ""
+
+
+def read_playlists(path: Path) -> list[Playlist]:
+    """Lines "language | album | url"; "#" starts a comment, album "-" means not an album."""
+    out = []
+    for n, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+        line = line.split("#", 1)[0].strip() if line.lstrip().startswith("#") else line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) != 3 or not LIST_ID.search(parts[2]):
+            raise ValueError(f"{path}:{n}: expected 'language | album | playlist url', got {line!r}")
+        out.append(Playlist(parts[0], "" if parts[1] == "-" else parts[1], parts[2]))
+    return out
+
+
+def list_file(folder: Path, playlist: Playlist) -> Path:
+    return folder / f"{playlist.list_id}.tsv"
+
+
+def read_list(path: Path) -> list[dict]:
+    """Rows of a list file written by write_list."""
+    return list(csv.DictReader(path.read_text(encoding="utf-8").splitlines(), delimiter="\t"))

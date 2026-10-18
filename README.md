@@ -114,7 +114,8 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
    - 想自己產生資料檔：格式見 [docs/web-data-format.md](docs/web-data-format.md)，可以從空白範本 [docs/templates/songs.template.json](docs/templates/songs.template.json) 開始填。
    - 點一句：影片從這一句開始播；播放時目前這句會高亮並自動捲動。單句重複、0.75／0.5 倍速。
    - 點一個詞：顯示讀音、釋義、同形異義警告，可標記「已學會」；生詞有底線，學會後消失。
-   - 歌曲清單預設依「已懂比例」排序，最容易的排最上面；按「排列」可以自訂順序，並加上可命名的分隔線（例如「這週」「演唱會曲目」）。
+   - 首頁分「全部」和「★最愛」：「全部」依專輯分組（可收合、可切換成依已懂比例排序），點 ☆ 加入最愛；
+     「最愛」可以自訂順序並加上可命名的分隔線（例如「最有興趣」「比較熟」）。
    - 選單可匯出已學會的詞，放到電腦的 `data/known/ja.txt` 就會同步到詞彙表和 Anki。
 
    本機預覽：`uv run python -m http.server 5180`，打開 `http://localhost:5180/web/`（Windows 會保留部分 port，若無法啟動就換一個號碼）。
