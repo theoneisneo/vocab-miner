@@ -1,10 +1,15 @@
 # --- private: never commit (see CLAUDE.md "公開與私人的界線") ---
-private/
-data/
-out/
-.cache/
-config.local.toml
-CLAUDE.local.md
+# anchored to the repository root: src/vocab_miner/data/ holds public package data and must be committed
+/private/
+/data/
+/out/
+/.cache/
+/config.local.toml
+/CLAUDE.local.md
+# example projects write their own corpus, outputs and caches
+/examples/*/data/
+/examples/*/out/
+/examples/*/.cache/
 
 # --- python ---
 __pycache__/
