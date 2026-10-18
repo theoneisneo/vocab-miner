@@ -145,3 +145,18 @@ def test_suffixes_are_separate_words(tok):
     particle = [t for t in tok.tokenize("行くのさ") if t.surface == "さ"]
     assert particle and particle[0].lemma == "さ"                       # the sentence-final particle stays itself
     assert particle[0].key != by_surface["さ"].key
+
+
+def test_english_words_in_japanese_text(tok):
+    toks = tok.tokenize("踊れ dance! I don't know 'bout it")
+    eng = [(t.surface, t.lemma) for t in toks if t.pos == "X"]
+    assert ("dance", "dance") in eng and ("don't", "don't") in eng and ("'bout", "'bout") in eng
+    assert ("I", "i") in eng                                             # lower-cased lemma
+    assert all(t.pos_native == tok.foreign_pos_native for t in toks if t.pos == "X")
+    assert all(t.reading is None for t in toks if t.pos == "X")
+    assert next(t for t in toks if t.surface == "踊れ").pos == "VERB"     # Japanese untouched
+
+
+def test_loanword_origin(tok):
+    assert tok.origin("アイドル") == "idol"
+    assert tok.origin("涙") is None

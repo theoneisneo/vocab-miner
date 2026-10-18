@@ -152,3 +152,7 @@ def test_translation_sidecar_missing_is_fine():
 def test_translation_layout_validated():
     with pytest.raises(ValueError):
         SrtSource("s", SUBS, "ja", translations={"zh-Hant": "below"})
+
+
+def test_clean_unescapes_html_entities():
+    assert clean("aren&#x27;t &amp; won&#39;t") == "aren't & won't"

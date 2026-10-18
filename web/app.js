@@ -65,6 +65,8 @@ let datasets = new Map();   // dataset id -> imported data file
 let data = null;            // the dataset of the song being shown
 let known = new Map();      // word key -> true/false (overrides status from the data files; shared by all datasets)
 let lookups = new Map();    // word key -> how many times the word card was opened (words you keep checking)
+let layouts = new Map();    // dataset id -> your own song order with separators: [{t:"doc", id} | {t:"sep", label}]
+let editingLayout = null;   // dataset id whose order is being edited on the home page
 let player = null, ticker = null, currentLine = -1, loopLine = -1;
 
 function isKnown(w) {
@@ -153,7 +155,7 @@ function docStats(ds, doc) {
     const wi = s[2];
     if (wi === null || wi === undefined) continue;
     const w = ds.words[wi];
-    if (!w || w.grammar) continue;
+    if (!w || w.grammar || w.foreign) continue;     // grammar and other-language words are not the target
     total++;
     if (isKnown(w)) ok++; else fresh.add(w.key);
   }
@@ -234,23 +236,23 @@ function renderHome() {
   const often = renderOftenLooked();
   if (often) view.append(often);
   for (const [id, ds] of datasets) {
-    const docs = ds.docs.map((d) => ({ d, s: docStats(ds, d) }));
-    const main = docs.filter((x) => !x.d.noStats), extra = docs.filter((x) => x.d.noStats);
-    const list = (items) => el("ul", { class: "songs" }, items.map(({ d, s }) =>
-      el("li", {}, el("a", { class: "song", href: docRoute(id, d) },
-        el("div", { class: "song-title" }, d.title, el("div", { class: "song-sub" }, `${d.lines.length} 句 · 生詞 ${s.fresh}`)),
-        el("div", { class: "meter" }, `已懂 ${s.pct}%`, el("div", { class: "meter-bar" }, el("span", { style: `width:${s.pct}%` })))))));
-    main.sort((a, b) => b.s.pct - a.s.pct || a.s.fresh - b.s.fresh);
-    const content = ds.words.filter((w) => !w.grammar);
-    view.append(el("section", { class: "dataset" },
+    const custom = layouts.has(id);
+    const editing = editingLayout === id;
+    const content = ds.words.filter((w) => !w.grammar && !w.foreign);
+    view.append(el("section", { class: "dataset" + (editing ? " editing" : "") },
       el("div", { class: "dataset-head" },
         el("h2", {}, ds.title || id),
+        el("button", { class: "chip small-chip", "aria-pressed": String(editing),
+          onclick: () => { editingLayout = editing ? null : id; renderHome(); } }, editing ? "完成" : "排列"),
         el("button", { class: "icon-btn small", "aria-label": `移除 ${ds.title || id}`, onclick: () => removeDataset(id) }, "✕")),
       el("div", { class: "section-title" },
-        `已學會 ${content.filter(isKnown).length} / ${content.length} 個詞 · 產生於 ${(ds.generated || "").slice(0, 10)} · 越上面越容易學`),
-      list(main),
-      extra.length ? el("div", { class: "section-title" }, "其他版本（不列入統計）") : null,
-      extra.length ? list(extra) : null));
+        `已學會 ${content.filter(isKnown).length} / ${content.length} 個詞 · 產生於 ${(ds.generated || "").slice(0, 10)} · `
+        + (custom ? "自訂順序" : "越上面越容易學")),
+      editing ? el("div", { class: "layout-actions" },
+        el("button", { class: "secondary", onclick: () => addSeparator(id, ds) }, "＋ 加分隔線"),
+        custom ? el("button", { class: "secondary", onclick: () => resetLayout(id) }, "恢復自動排序") : null,
+        el("p", { class: "hint" }, "用 ↑ ↓ 調整順序；分隔線可以命名（例如「這週」「演唱會曲目」），可以加很多條。")) : null,
+      renderSongList(id, ds, editing)));
   }
   view.append(el("div", { class: "home-actions" },
     el("button", { class: "secondary", onclick: () => $("#file").click() }, "匯入或更新資料檔（songs.json）"),
@@ -258,11 +260,99 @@ function renderHome() {
     el("p", { class: "hint" }, "同名的資料檔會被更新，不同名的會新增在上面；已學會的詞所有資料共用。")));
 }
 
+// ---------- your own song order ----------
+
+/** Songs (and separators) of a data file in display order: your saved order, or easiest-first. */
+function datasetItems(id, ds) {
+  const byId = new Map(ds.docs.map((d) => [d.id, d]));
+  if (layouts.has(id)) {
+    const items = layouts.get(id).filter((it) => it.t === "sep" || byId.has(it.id));
+    const placed = new Set(items.filter((it) => it.t === "doc").map((it) => it.id));
+    for (const d of ds.docs) if (!placed.has(d.id)) items.push({ t: "doc", id: d.id });   // songs added later
+    return items;
+  }
+  const scored = ds.docs.map((d) => ({ d, s: docStats(ds, d) }));
+  const main = scored.filter((x) => !x.d.noStats).sort((a, b) => b.s.pct - a.s.pct || a.s.fresh - b.s.fresh);
+  const extra = scored.filter((x) => x.d.noStats);
+  return [...main.map((x) => ({ t: "doc", id: x.d.id })),
+    ...(extra.length ? [{ t: "sep", label: "其他版本（不列入統計）" }] : []),
+    ...extra.map((x) => ({ t: "doc", id: x.d.id }))];
+}
+
+async function saveLayout(id, items) {
+  layouts.set(id, items);
+  await kvSet("layouts", Object.fromEntries(layouts));
+  renderHome();
+}
+
+function moveItem(id, ds, i, delta) {
+  const items = datasetItems(id, ds);
+  const j = i + delta;
+  if (j < 0 || j >= items.length) return;
+  [items[i], items[j]] = [items[j], items[i]];
+  saveLayout(id, items);
+}
+
+function addSeparator(id, ds) {
+  const label = prompt("分隔線的名稱（可以留空）", "");
+  if (label === null) return;
+  saveLayout(id, [{ t: "sep", label: label.trim() }, ...datasetItems(id, ds)]);
+}
+
+function renameSeparator(id, ds, i) {
+  const items = datasetItems(id, ds);
+  const label = prompt("分隔線的名稱（可以留空）", items[i].label || "");
+  if (label === null) return;
+  items[i] = { t: "sep", label: label.trim() };
+  saveLayout(id, items);
+}
+
+function removeSeparator(id, ds, i) {
+  const items = datasetItems(id, ds);
+  items.splice(i, 1);
+  saveLayout(id, items);
+}
+
+async function resetLayout(id) {
+  if (!confirm("恢復成依「已懂比例」自動排序？自訂的順序和分隔線會消失。")) return;
+  layouts.delete(id);
+  await kvSet("layouts", Object.fromEntries(layouts));
+  renderHome();
+}
+
+function renderSongList(id, ds, editing) {
+  const byId = new Map(ds.docs.map((d) => [d.id, d]));
+  const items = datasetItems(id, ds);
+  const controls = (i, extra = []) => editing ? el("span", { class: "order-controls" },
+    el("button", { class: "icon-btn small", "aria-label": "往上移", disabled: i === 0, onclick: () => moveItem(id, ds, i, -1) }, "↑"),
+    el("button", { class: "icon-btn small", "aria-label": "往下移", disabled: i === items.length - 1,
+      onclick: () => moveItem(id, ds, i, 1) }, "↓"),
+    ...extra) : null;
+  return el("ul", { class: "songs" }, items.map((it, i) => {
+    if (it.t === "sep") {
+      return el("li", { class: "song-sep" },
+        el("span", { class: "sep-label" }, it.label || ""),
+        controls(i, [
+          el("button", { class: "icon-btn small", "aria-label": "重新命名", onclick: () => renameSeparator(id, ds, i) }, "✎"),
+          el("button", { class: "icon-btn small", "aria-label": "刪除分隔線", onclick: () => removeSeparator(id, ds, i) }, "✕")]));
+    }
+    const d = byId.get(it.id);
+    const s = docStats(ds, d);
+    const body = [
+      el("div", { class: "song-title" }, d.title, el("div", { class: "song-sub" }, `${d.lines.length} 句 · 生詞 ${s.fresh}`)),
+      el("div", { class: "meter" }, `已懂 ${s.pct}%`, el("div", { class: "meter-bar" }, el("span", { style: `width:${s.pct}%` })))];
+    return el("li", { class: editing ? "song-row" : "" },
+      editing ? el("div", { class: "song" }, ...body) : el("a", { class: "song", href: docRoute(id, d) }, ...body),
+      controls(i));
+  }));
+}
+
 async function removeDataset(id) {
   const ds = datasets.get(id);
   if (!confirm(`移除「${ds.title || id}」？已學會的詞會保留。`)) return;
   datasets.delete(id);
   await saveDatasets();
+  if (layouts.delete(id)) await kvSet("layouts", Object.fromEntries(layouts));
   const stillUsed = new Set([...datasets.values()].flatMap((d) => d.docs.map((x) => x.id)));
   for (const doc of ds.docs) if (!stillUsed.has(doc.id)) await kvDel(mediaKey(doc));
   route();
@@ -432,7 +522,7 @@ function songNewWords(doc) {
       if (tag === last) continue;                   // pieces of one token count once
       last = tag;
       const w = data.words[wi];
-      if (!w || w.grammar || isKnown(w)) continue;
+      if (!w || w.grammar || w.foreign || isKnown(w)) continue;
       const e = seen.get(w.key) || { w, n: 0, line: i };
       e.n++;
       seen.set(w.key, e);
@@ -496,8 +586,11 @@ function openWord(w, span, doc, i) {
   $("#sheet-ff").hidden = !w.ff;
   $("#sheet-ff").textContent = w.ff ? `⚠ 和中文意思不同：${w.ff}` : "";
   $("#sheet-en").textContent = w.en || "";
+  $("#sheet-origin").hidden = !w.origin;
+  $("#sheet-origin").textContent = w.origin ? `外來語，來自：${w.origin}（字典標註，僅供參考）` : "";
   $("#sheet-meta").textContent = (w.grammar
     ? `${w.pos || ""} · 文法詞 · 出現 ${w.count ?? "?"} 次`
+    : w.foreign ? `${w.pos || "外語"} · 出現在 ${w.docFreq ?? "?"} 首、共 ${w.count ?? "?"} 次`
     : `${w.pos || ""} · 學習順序 #${w.rank ?? "?"} · 出現在 ${w.docFreq ?? "?"} 首、共 ${w.count ?? "?"} 次`)
     + ` · 你查過 ${lookups.get(w.key)} 次`;
   updateKnownButton();
@@ -934,6 +1027,7 @@ $("#known-file").addEventListener("change", async (ev) => {
     if (legacy) await kvDel("data");
     known = new Map(Object.entries((await kvGet("known")) || {}));
     lookups = new Map(Object.entries((await kvGet("lookups")) || {}));
+    layouts = new Map(Object.entries((await kvGet("layouts")) || {}));
   } catch (err) {
     toast(`無法讀取本機資料：${err.message}`);
   }

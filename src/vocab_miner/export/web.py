@@ -37,7 +37,7 @@ def short_gloss(gloss: str, limit: int = 6) -> str:
     return g if len(g) <= limit else g[: limit - 1] + "…"
 
 
-def _word(e: VocabEntry, grammar: bool, labels: dict[str, str]) -> dict:
+def _word(e: VocabEntry, grammar: bool, labels: dict[str, str], foreign: bool = False) -> dict:
     zh = e.gloss.get("zh-Hant", "")
     return {
         "key": e.key, "lemma": e.lemma, "reading": e.reading or "", "romaji": e.romaji or "",
@@ -47,6 +47,8 @@ def _word(e: VocabEntry, grammar: bool, labels: dict[str, str]) -> dict:
         "zh": zh, "en": e.gloss.get("en", ""),
         "ff": e.false_friend or "", "rank": e.rank, "count": e.count, "docFreq": e.doc_freq,
         "grammar": grammar, "status": e.status,
+        **({"origin": e.origin} if e.origin else {}),
+        **({"foreign": True} if foreign else {}),
     }
 
 
@@ -55,9 +57,11 @@ def build_web_data(entries: Sequence[VocabEntry], grammar: Sequence[VocabEntry],
                    romanize_tokens: Callable[[Sequence[Token]], str] | None = None,
                    translation_lang: str = "zh-Hant", title: str = "",
                    romanize_token_list: Callable[[Sequence[Token]], list[str]] | None = None,
-                   explanations: Mapping[str, str] | None = None) -> dict:
+                   explanations: Mapping[str, str] | None = None,
+                   foreign: Sequence[VocabEntry] = ()) -> dict:
     labels = load_short_labels(lang, translation_lang.split("-")[0])
-    words = [_word(e, False, labels) for e in entries] + [_word(e, True, labels) for e in grammar]
+    words = ([_word(e, False, labels) for e in entries] + [_word(e, True, labels) for e in grammar]
+             + [_word(e, False, labels, foreign=True) for e in foreign])
     index_of = {w["key"]: i for i, w in enumerate(words)}
 
     docs: dict[tuple[str, str], dict] = {}

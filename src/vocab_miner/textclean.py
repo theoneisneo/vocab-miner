@@ -1,6 +1,7 @@
 """Text cleanup shared by sources: control codes, layout line breaks, whitespace."""
 from __future__ import annotations
 
+import html
 import re
 
 # <tag ...>, </tag>, {0}, {name}, [tag] -- markup and placeholders commonly found in game/subtitle text
@@ -28,6 +29,7 @@ def normalize_space(text: str) -> str:
 
 
 def clean(text: str, *, control_codes: bool = True) -> str:
+    text = html.unescape(text)          # &amp; &#39; ... from web-sourced subtitles and lyrics
     if control_codes:
         text = strip_control_codes(text)
     return normalize_space(join_layout_breaks(text))

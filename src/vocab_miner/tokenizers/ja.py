@@ -61,6 +61,36 @@ def _clean_lemma(lemma: str) -> str:
     return lemma.split("-", 1)[0] if "-" in lemma and not lemma.startswith("-") else lemma
 
 
+LATIN_PIECE = re.compile(r"[A-Za-z'\u2019]+")
+ENGLISH_WORD = re.compile(r"['\u2019]?[A-Za-z][A-Za-z'\u2019-]*")
+FOREIGN_POS = "外国語-英語"
+
+
+def _english(tokens: list[Token]) -> list[Token]:
+    """English words in Japanese text (lyrics often have some) become their own words.
+
+    UniDic splits contractions at the apostrophe (don / ' / t); adjacent Latin pieces are joined back into one
+    token (don't, 'bout, knowin'). English tokens get UPOS "X", a lower-cased lemma and no reading, so they stay
+    out of the Japanese word lists but can be listed and glossed on their own.
+    """
+    merged: list[Token] = []
+    for t in tokens:
+        prev = merged[-1] if merged else None
+        if (prev is not None and prev.end == t.start and LATIN_PIECE.fullmatch(t.surface)
+                and LATIN_PIECE.fullmatch(prev.surface)):
+            merged[-1] = Token(**{**prev.__dict__, "surface": prev.surface + t.surface, "end": t.end})
+        else:
+            merged.append(t)
+    out = []
+    for t in merged:
+        if ENGLISH_WORD.fullmatch(t.surface):
+            lemma = t.surface.replace("\u2019", "'").lower()
+            t = Token(surface=t.surface, lemma=lemma, reading=None, pos="X", pos_native=FOREIGN_POS,
+                      start=t.start, end=t.end, is_proper=False, base=lemma, lemma_reading=None)
+        out.append(t)
+    return out
+
+
 def _suffixes(tokens: list[Token]) -> list[Token]:
     """Suffixes get a leading 〜 (美しさ -> 美し + 〜さ, 僕ら -> 僕 + 〜ら).
 
@@ -110,7 +140,9 @@ def _modern_lemma(lemma: str, base: str, lemma_reading: str | None, surface: str
 
 class JapaneseTokenizer:
     lang = "ja"
-    version = "8"           # bump when tokenization or reading alignment changes, so indexes get rebuilt
+    foreign_pos_native = FOREIGN_POS      # English words in the text get their own word list
+    foreign_lang = "en"
+    version = "9"           # bump when tokenization or reading alignment changes, so indexes get rebuilt
     word_pattern = WORD
 
     def __init__(self, names: Iterable[str] = ()):
@@ -130,7 +162,7 @@ class JapaneseTokenizer:
 
     def tokenize(self, text: str) -> list[Token]:
         if not self._names_re:
-            return _suffixes(_te_auxiliaries(self._tag(text, 0)))
+            return _english(_suffixes(_te_auxiliaries(self._tag(text, 0))))
         out: list[Token] = []
         pos = 0
         for m in self._names_re.finditer(text):
@@ -142,7 +174,7 @@ class JapaneseTokenizer:
                              base=name, lemma_reading=reading))
             pos = m.end()
         out += self._tag(text[pos:], pos)
-        return _suffixes(_te_auxiliaries(out))
+        return _english(_suffixes(_te_auxiliaries(out)))
 
     def _tag(self, text: str, offset: int) -> list[Token]:
         tokens: list[Token] = []
@@ -176,6 +208,16 @@ class JapaneseTokenizer:
     def tokenize_with_hint(self, text: str, hint: str | None) -> list[Token]:
         tokens = self.tokenize(text)
         return align_readings(tokens, hint) if hint else tokens
+
+    def origin(self, lemma: str) -> str | None:
+        """Source word of a loanword as UniDic records it (アイドル -> idol); None for native words."""
+        words = list(self._tagger(lemma))
+        if len(words) != 1:
+            return None
+        f = words[0].feature
+        if f.goshu == "外" and f.lemma and "-" in f.lemma and not f.lemma.startswith("-"):
+            return f.lemma.split("-", 1)[1]
+        return None
 
     @staticmethod
     def pos_label(token_or_pos_native: Token | str) -> str:

@@ -228,3 +228,26 @@ def test_tsv_short_column(tmp_path):
     assert d.lookup("セーブ", "せーぶ") == {"zh-Hant": "節省；存檔", "zh-Hant:short": "保存"}
     assert d.lookup("雨", "あめ") == {"zh-Hant": "雨"}                       # no short: none returned
     assert read_rows(path)[0]["short"] == "保存"
+
+
+def test_foreign_words_are_a_separate_list(tmp_path):
+    pytest.importorskip("fugashi")
+    (tmp_path / "s.txt").write_text("踊れ dance\n雨が降る dance dance\n", encoding="utf-8")
+    (tmp_path / "config.toml").write_text(
+        '[[sources]]\nid = "s"\nplugin = "vocab_miner.sources.text:TextSource"\npath = "s.txt"\nlang = "ja"\n'
+        '[[dictionaries]]\nplugin = "vocab_miner.dictionaries.tsv:TsvGlossDictionary"\npath = "g.tsv"\n'
+        'gloss_lang = "zh-Hant"\n', encoding="utf-8")
+    (tmp_path / "g.tsv").write_text("dance\t\t跳舞\tuser\tX\t跳舞\n", encoding="utf-8")
+    from vocab_miner.config import load_config
+    from vocab_miner.ingest import ingest
+    from vocab_miner.pipeline import Pipeline
+
+    cfg = load_config(tmp_path)
+    ingest(cfg)
+    pipe = Pipeline(cfg)
+    pipe.build(log=lambda m: None)
+    res = pipe.vocab(log=lambda m: None)
+    assert [e.lemma for e in res.foreign] == ["dance"] and res.foreign[0].count == 3
+    assert res.foreign[0].gloss["zh-Hant"] == "跳舞" and res.foreign[0].pos_label == "英文"
+    assert "dance" not in {e.lemma for e in res.entries + res.grammar}    # never in the Japanese lists
+    assert sum(e.count for e in res.entries) > 0

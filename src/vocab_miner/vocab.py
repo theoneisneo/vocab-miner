@@ -39,12 +39,20 @@ class _Acc:
 
 def collect(index: Index, lang: str, options: VocabOptions,
             word_pattern: re.Pattern | None = None, pos_label: Callable[[str], str] | None = None,
-            source_ids: list[str] | None = None, doc_ids: list[str] | None = None) -> list[VocabEntry]:
-    """Count lemmas over the (filtered) corpus. Utterances tagged no-stats are not counted."""
+            source_ids: list[str] | None = None, doc_ids: list[str] | None = None,
+            only_pos_native: str | None = None) -> list[VocabEntry]:
+    """Count lemmas over the (filtered) corpus. Utterances tagged no-stats are not counted.
+
+    only_pos_native: count just the tokens whose native POS starts with this (e.g. foreign words embedded in
+    the text), bypassing the usual filters.
+    """
     titles = index.doc_titles()
     accs: dict[str, _Acc] = defaultdict(_Acc)
     for _, source_id, doc_id, t in index.iter_tokens(source_ids, doc_ids):
-        if not keep_token(t, options, word_pattern):
+        if only_pos_native is not None:
+            if not t.pos_native.startswith(only_pos_native):
+                continue
+        elif not keep_token(t, options, word_pattern):
             continue
         a = accs[t.key]
         a.count += 1

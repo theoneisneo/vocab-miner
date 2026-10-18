@@ -81,6 +81,7 @@ class VocabEntry:
     jlpt: str | None = None
     status: Literal["new", "learning", "known"] = "new"
     examples: list[str] = field(default_factory=list)      # Utterance ids
+    origin: str | None = None      # source word of a loanword (ja: アイドル <- idol), when the dictionary knows it
     rank: int = 0
 
 

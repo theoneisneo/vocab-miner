@@ -111,6 +111,10 @@ def vocab(
     suffix = "".join(f"_{d}" for d in (doc or []))
     path = out or cfg.out_dir / f"vocab{suffix}.csv"
     targets = [(res.entries, path, "words")]
+    if res.foreign:
+        targets.append((res.foreign, path.with_name(path.name.replace("vocab", "english", 1)
+                                                    if "vocab" in path.name else f"english_{path.name}"),
+                        "words in English"))
     if res.grammar:
         targets.append((res.grammar, path.with_name(path.name.replace("vocab", "grammar", 1)
                                                     if "vocab" in path.name else f"grammar_{path.name}"),
@@ -190,7 +194,7 @@ def web(
                           getattr(romanizer, "romanize_tokens", None),
                           title=title or cfg.get("web", {}).get("title", ""),
                           romanize_token_list=getattr(romanizer, "romanize_token_list", None),
-                          explanations=explanations)
+                          explanations=explanations, foreign=res.foreign)
     path = out or cfg.out_dir / "web" / "songs.json"
     write_web_data(data, path)
     typer.echo(f"{len(data['docs'])} docs, {len(utts)} lines, {len(data['words'])} words -> {path} "
@@ -361,7 +365,7 @@ def gloss_todo(
     pipe = Pipeline(cfg)
     pipe.build(log=lambda m: None)
     res = pipe.vocab(log=lambda m: None)
-    entries, utts = res.entries + res.grammar, res.utterances
+    entries, utts = res.entries + res.grammar + res.foreign, res.utterances
     lines = ["\t".join([*HEADER, "pos_label", "gloss_en", "example", "example_translation"])]
     for e in entries:
         if e.gloss.get(lang):

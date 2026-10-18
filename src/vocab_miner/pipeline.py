@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,8 @@ PATH_KEYS = ("path",)
 class VocabResult:
     entries: list[VocabEntry]          # content words, in learning order
     grammar: list[VocabEntry]          # particles, auxiliaries ... (empty with include_grammar = true)
-    utterances: dict[str, Utterance]   # example sentences referenced by either list
+    utterances: dict[str, Utterance]   # example sentences referenced by any list
+    foreign: list[VocabEntry] = field(default_factory=list)   # words in another language inside the text
 
 
 def instantiate(block: dict[str, Any] | None, config: Config, default: str | None = None, **extra):
@@ -146,8 +147,21 @@ class Pipeline:
                 add_coverage(ranked)
                 lists.append(ranked)
             entries, grammar = lists
-            everything = entries + grammar
+            # words written in another script (English in Japanese lyrics): their own list, never mixed into
+            # the target language's ranking or coverage
+            foreign: list[VocabEntry] = []
+            marker = getattr(tok, "foreign_pos_native", None)
+            if marker and vcfg.get("foreign", True):
+                foreign = ranker.rank(collect(idx, getattr(tok, "foreign_lang", "en"), VocabOptions(),
+                                              pos_label=lambda pn: "英文", source_ids=source_ids, doc_ids=doc_ids,
+                                              only_pos_native=marker), known)
+                add_coverage(foreign)
+            everything = entries + grammar + foreign
             apply_status(everything, known, learning)
+            origin = getattr(tok, "origin", None)
+            if origin:
+                for e in entries:
+                    e.origin = origin(e.lemma)
 
             romanizer = self.romanizer()
             word = getattr(romanizer, "romanize_word", None)
@@ -170,7 +184,7 @@ class Pipeline:
                 cands = list(idx.utterances(idx.utterance_ids_for(e.key)).values())
                 e.examples = selector.select(e, cands, known, k)
                 used.update((c.id, c) for c in cands if c.id in e.examples)
-        return VocabResult(entries, grammar, used)
+        return VocabResult(entries, grammar, used, foreign)
 
     def _glosses(self, entries: list[VocabEntry], log: Callable[[str], None]) -> None:
         try:

@@ -246,3 +246,18 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 
 .home-actions .secondary + .secondary { margin-left: 8px; }
 @media (max-width: 420px) { .home-actions .secondary { display: block; width: 100%; margin: 8px 0 0 !important; } }
+
+/* your own song order */
+.small-chip { padding: 4px 12px; font-size: 13px; margin-left: auto; margin-right: 4px; }
+.layout-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 10px; }
+.layout-actions .secondary { padding: 8px 12px; font-size: 14px; }
+.layout-actions .hint { flex-basis: 100%; margin: 0; }
+.song-sep { display: flex; align-items: center; gap: 8px; margin: 10px 2px 2px; font-size: 13px; color: var(--muted); }
+.song-sep::after { content: ""; flex: 1; border-top: 1px solid var(--line); order: 1; }
+.song-sep .order-controls { order: 2; }
+.sep-label:empty { display: none; }
+.song-row { display: flex; align-items: center; gap: 6px; }
+.song-row .song { flex: 1; cursor: default; }
+.order-controls { display: inline-flex; gap: 2px; }
+.order-controls .icon-btn:disabled { opacity: .25; }
+.sheet-origin { font-size: 13px; color: var(--accent); margin: 2px 0; }
