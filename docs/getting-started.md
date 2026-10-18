@@ -244,7 +244,7 @@ uv run vm web                        # 在網頁裡「更新資料」
 
 ## 12. 從 YouTube 播放清單開始
 
-跟唱網頁播的是 YouTube 影片，所以「一個播放清單」很適合當收集素材的起點。需要 yt-dlp（`uv sync --extra youtube`，或每次用 `uv run --with yt-dlp vm ...`）。
+跟唱網頁播的是 YouTube 影片，所以「一個播放清單」很適合當收集素材的起點。（yt-dlp 已包含在依賴裡，`uv sync` 就會裝好。YouTube 改版後若抓不到，`uv lock --upgrade-package yt-dlp` 更新它。）
 
 ```bash
 uv run vm yt-list "https://www.youtube.com/playlist?list=..." -o data/raw/youtube/mylist.tsv   # 影片清單（不下載任何東西）

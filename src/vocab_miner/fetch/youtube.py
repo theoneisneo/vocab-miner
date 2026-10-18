@@ -4,8 +4,6 @@ The sing-along page plays YouTube videos, so a playlist is a natural way to coll
 list the videos, then download the subtitle tracks the uploaders provide (never the video itself).
 Videos without subtitles can be transcribed later (Whisper).
 
-Needs yt-dlp:  uv sync --extra youtube   (or  uv run --with yt-dlp vm ...)
-
 Subtitles are saved as <out>/<video id>.vtt so the file name is the video id; the subtitle source can then
 link every line to its place in the video.
 """
@@ -36,7 +34,7 @@ def _yt_dlp():
     try:
         import yt_dlp
     except ImportError as e:
-        raise ImportError("yt-dlp is not installed: uv sync --extra youtube  (or: uv run --with yt-dlp vm ...)") from e
+        raise ImportError("yt-dlp is missing: run uv sync") from e
     return yt_dlp
 
 

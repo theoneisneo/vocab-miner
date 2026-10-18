@@ -727,6 +727,7 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "typer" },
+    { name = "yt-dlp" },
 ]
 
 [package.optional-dependencies]
@@ -740,9 +741,6 @@ ja = [
 ]
 whisper = [
     { name = "faster-whisper" },
-]
-youtube = [
-    { name = "yt-dlp" },
 ]
 
 [package.dev-dependencies]
@@ -759,9 +757,9 @@ requires-dist = [
     { name = "genanki", marker = "extra == 'anki'", specifier = ">=0.13" },
     { name = "typer", specifier = ">=0.12" },
     { name = "unidic-lite", marker = "extra == 'ja'", specifier = ">=1.0.8" },
-    { name = "yt-dlp", marker = "extra == 'youtube'" },
+    { name = "yt-dlp", specifier = ">=2025.1" },
 ]
-provides-extras = ["ja", "anki", "whisper", "youtube"]
+provides-extras = ["ja", "anki", "whisper"]
 
 [package.metadata.requires-dev]
 dev = [

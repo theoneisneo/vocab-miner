@@ -11,7 +11,7 @@
 
 這個 repo 會公開。素材本身多半有版權，取得方式也不公開。
 
-- **公開（進 git）**：框架、資料模型、通用 source（純文字、字幕檔、Whisper 轉寫）、從 YouTube 播放清單收集影片與字幕（`vm yt-list` / `vm yt-subs`，yt-dlp 是選用依賴）、分詞、排序、匯出、測試。
+- **公開（進 git）**：框架、資料模型、通用 source（純文字、字幕檔、Whisper 轉寫）、從 YouTube 播放清單收集影片與字幕（`vm yt-list` / `vm yt-subs`；yt-dlp 是一般依賴，YouTube 影片本身也是素材來源）、分詞、排序、匯出、測試。
 - **私人（不進 git）**：`private/`、`data/`、`out/`、`.cache/`、`config.local.toml`、`CLAUDE.local.md`。
   - 任何針對特定網站或特定遊戲的抓取/解析程式，一律放 `private/sources/`。
   - 任何素材原文（歌詞、台詞、字幕）、由素材產生的詞彙表和卡片，一律只存在 `data/` 或 `out/`。
