@@ -2,7 +2,12 @@
 
 Media: if an audio/video file with the same stem sits next to the subtitle file (song.lrc + song.mp3),
 each utterance gets a MediaRef(kind="file") with its start/end. Otherwise a YouTube id can be given per doc
-with the `youtube` option: { "<doc_id>" = "<video id>" }.
+with the `youtube` option: { "<doc_id>" = "<video id>" }, or for files named by their video id
+(as `vm yt-subs` / `vm transcribe` write them) with `video_list` = a list file from `vm yt-list`.
+
+Titles: the `titles` option { "<doc_id>" = "..." }, else the .lrc [ti:] tag, else the title in `video_list`.
+An .lrc whose [re:] tag says it is a transcription (as `vm transcribe` marks Whisper output) gets the
+"transcribed" tag, so apps can warn that the text may contain mistakes.
 
 Translations: bilingual material is supported with the `translations` option (see SubtitleSource).
 """
@@ -13,7 +18,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..model import MediaRef, Utterance
+from ..model import TRANSCRIBED_TAG, MediaRef, Utterance
 from ..textclean import clean
 from . import iter_files, read_text
 
@@ -36,6 +41,16 @@ LRC_WORD_TIME = re.compile(r"<\d+:\d{1,2}(?:[.:]\d{1,3})?>")    # enhanced LRC p
 
 def _secs(m: str, s: str, frac: str | None) -> float:
     return int(m) * 60 + int(s) + (int(frac) / 10 ** len(frac) if frac else 0.0)
+
+
+def lrc_meta(text: str) -> dict[str, str]:
+    """[ti:Title] [ar:Artist] [re:...] -> {"ti": "Title", ...} (keys lowercased)."""
+    meta = {}
+    for line in text.split("\n"):
+        m = LRC_META.match(line.strip())
+        if m and not LRC_TIME.match(line.strip()):
+            meta.setdefault(m.group(1).lower(), m.group(2).strip())
+    return meta
 
 
 def parse_lrc(text: str) -> list[Cue]:
@@ -98,6 +113,8 @@ PARSERS = {".lrc": parse_lrc, ".srt": parse_srt, ".vtt": parse_vtt}
 class SubtitleSource:
     """Options:
     youtube       {doc_id: video id} when there is no local audio next to the file
+    video_list    list file from `vm yt-list`: files named <video id>.* get that video and its title
+    titles        {doc_id: title}
     translations  {lang: layout} for bilingual material, layout one of
                   "last-line"  the last line of each cue is the translation (bilingual .srt/.vtt)
                   "same-time"  a cue with the same start time right after the original (bilingual .lrc)
@@ -108,7 +125,8 @@ class SubtitleSource:
 
     def __init__(self, source_id: str, path: str | Path, lang: str,
                  youtube: dict[str, str] | None = None, translations: dict[str, str] | None = None,
-                 control_codes: bool = True):
+                 control_codes: bool = True, video_list: str | Path | None = None,
+                 titles: dict[str, str] | None = None):
         self.source_id = source_id
         self.path = Path(path)
         self.lang = lang
@@ -118,6 +136,8 @@ class SubtitleSource:
         if bad:
             raise ValueError(f"translation layout must be one of {sorted(LAYOUTS)}, got {sorted(bad)}")
         self.control_codes = control_codes
+        self.titles = titles or {}
+        self.video_titles = read_video_list(Path(video_list)) if video_list else {}
 
     @staticmethod
     def find_media(file: Path) -> Path | None:
@@ -132,6 +152,8 @@ class SubtitleSource:
             return MediaRef(kind="file", uri=str(audio), start=cue.start, end=cue.end)
         if doc_id in self.youtube:
             return MediaRef(kind="youtube", uri=self.youtube[doc_id], start=cue.start, end=cue.end)
+        if doc_id in self.video_titles:
+            return MediaRef(kind="youtube", uri=doc_id, start=cue.start, end=cue.end)
         return None
 
     def _clean(self, text: str) -> str:
@@ -179,6 +201,10 @@ class SubtitleSource:
         for doc_id, file in iter_files(self.path, self.suffixes):
             if SIDECAR.search(file.stem):
                 continue                             # song.zh-Hant.lrc is a translation, not a doc of its own
+            meta = lrc_meta(read_text(file)) if file.suffix.lower() == ".lrc" else {}
+            title = self.titles.get(doc_id) or meta.get("ti") or self.video_titles.get(doc_id)
+            tags = ([f"title:{title}"] if title else []) + (
+                [TRANSCRIBED_TAG] if "transcription" in meta.get("re", "").lower() else [])
             seq = 0
             for cue, tr in self._with_translations(file, self._cues(file)):
                 text = self._clean(cue.text)
@@ -188,7 +214,14 @@ class SubtitleSource:
                 yield Utterance(id=f"{self.source_id}:{doc_id}:{seq}", source_id=self.source_id,
                                 doc_id=doc_id, seq=seq, lang=self.lang, text=text,
                                 translations={k: v for k, v in tr.items() if v},
-                                media=self._media(doc_id, file, cue))
+                                media=self._media(doc_id, file, cue), tags=list(tags))
+
+
+def read_video_list(path: Path) -> dict[str, str]:
+    """{video id: title} from a `vm yt-list` file (tab-separated with a header row containing id and title)."""
+    import csv
+    rows = csv.DictReader(read_text(path).splitlines(), delimiter="\t")
+    return {r["id"]: r.get("title") or "" for r in rows if r.get("id")}
 
 
 LAYOUTS = {"last-line", "same-time", "file"}

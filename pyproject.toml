@@ -12,6 +12,10 @@ dependencies = [
 
 [project.optional-dependencies]
 ja = ["fugashi>=1.3", "unidic-lite>=1.0.8", "cutlet>=0.4"]
+en = [
+    "spacy>=3.8,<3.9",
+    "en-core-web-sm",                  # spaCy model, not on PyPI: see [tool.uv.sources]
+]
 anki = ["genanki>=0.13"]
 whisper = [
     "faster-whisper>=1.1",
@@ -26,6 +30,9 @@ vm = "vocab_miner.cli:app"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
 
 [build-system]
 requires = ["hatchling"]

@@ -95,7 +95,7 @@ def load_plugin(spec: str, root: Path | None = None) -> type:
         raise ConfigError(f"module {mod_name!r} has no attribute {attr!r}") from e
 
 
-PATH_KEYS = ("path",)
+PATH_KEYS = ("path", "video_list")
 
 
 def build_source(block: dict[str, Any], config: Config):

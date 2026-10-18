@@ -272,6 +272,50 @@ uv run vm transcribe recordings/*.mp4 -o data/raw/transcripts                 # 
 - **完全沒有文字**：用 Whisper 聽寫的結果。歌聲常會聽錯，檔頭會標明是轉寫，請對照原曲修正。
 - 結果寫成 `<名稱>.lrc`，可以直接手動修改，再用 `LrcSource` 匯入。已經有 `.lrc`／`.vtt`／`.srt` 的會跳過（`--force` 重做）。
 - 一首歌在 RTX 3090 上約 40 秒；沒有 GPU 也能跑，但慢很多（可以用 `--model small` 加快）。
+- Whisper 被指定語言時仍會照它聽到的語言寫；結果明顯不是指定語言時，指令會提醒你（例如影片其實是原文版）。
+
+## 14. 另一種語言（例如英文）
+
+每種語言用自己的專案資料夾（自己的設定、索引和輸出），跟唱網頁可以同時匯入多份資料。英文需要 `uv sync --extra en`（spaCy）。
+
+`data/en/config.local.toml`：
+
+```toml
+data_dir = "."
+out_dir = "../../out/en"
+target_lang = "en"
+gloss_langs = ["zh-Hant"]
+romanizer = false
+
+[tokenizer]
+plugin = "vocab_miner.tokenizers.en:EnglishTokenizer"
+
+[[dictionaries]]
+plugin = "vocab_miner.dictionaries.tsv:TsvGlossDictionary"
+path = "gloss/en-zh.tsv"
+gloss_lang = "zh-Hant"
+
+[vocab]
+exclude_pos = ["PUNCT", "SYM", "NUM", "X", "INTJ"]               # INTJ: la-la-la、oh、yeah
+grammar_pos = ["ADP", "PART", "SCONJ", "AUX", "CCONJ", "DET", "PRON"]
+
+[[sources]]
+id = "songs/english"
+plugin = "vocab_miner.sources.subtitle:SubtitleSource"           # .lrc / .srt / .vtt
+path = "../raw/english"
+lang = "en"
+video_list = "../raw/youtube/mylist.tsv"                         # 檔名是影片 ID：自動連到影片、帶入歌名
+```
+
+```bash
+uv run vm ingest --root data/en
+uv run vm gloss-todo --root data/en -o todo.tsv    # 補中文釋義（gloss 欄；short 欄可填逐詞顯示的短釋）
+uv run vm gloss-import todo.tsv --root data/en
+uv run vm web --root data/en                       # out/en/web/songs.json，在網頁裡匯入
+```
+
+- 分詞會還原詞形（sang → sing、skies → sky），縮寫拆開（I'm → I + be、don't → do + not）。
+- 英文歌詞通常沒有中譯；在網頁上按句子旁的「問」，AI 會翻譯並解釋。
 
 ---
 

@@ -151,5 +151,17 @@ def to_lrc(lines: list[Line], title: str = "", transcribed: bool = False) -> str
     return "\n".join(out) + "\n"
 
 
+LATIN_LANGS = {"en", "fr", "de", "es", "it", "pt", "nl", "id", "vi"}
+
+
+def looks_like(text: str, lang: str) -> bool:
+    """Rough check that a transcription is in `lang`: for Latin-script languages most letters are Latin.
+    (Whisper keeps writing the language it hears even when told another one.)"""
+    if lang.split("-")[0] not in LATIN_LANGS:
+        return True
+    letters = [c for c in text if c.isalpha()]
+    return not letters or sum(c.isascii() for c in letters) / len(letters) >= 0.8
+
+
 def read_lyrics(path: Path) -> list[str]:
     return [ln for ln in path.read_text(encoding="utf-8-sig").splitlines() if ln.strip()]

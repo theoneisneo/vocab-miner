@@ -372,7 +372,7 @@ def gloss_todo(
         if e.gloss.get(lang):
             continue
         ex = utts.get(e.examples[0]) if e.examples else None
-        lines.append("\t".join([e.lemma, e.reading or "", "", "", e.pos, e.pos_label or "", e.gloss.get("en", ""),
+        lines.append("\t".join([e.lemma, e.reading or "", "", "", e.pos, "", e.pos_label or "", e.gloss.get("en", ""),
                                 ex.text if ex else "", ex.translations.get(lang, "") if ex else ""]))
     text = "\n".join(lines) + "\n"
     if out:
@@ -505,3 +505,5 @@ def transcribe_cmd(
             lines, kind = heard, "transcribed (check for mistakes)"
         (out / f"{name}.lrc").write_text(tr.to_lrc(lines, title, transcribed=kind != "lyrics timed"), encoding="utf-8")
         typer.echo(f"[{n}/{len(todo)}] {name} {title[:40]:<40} {len(lines)} lines, {kind}")
+        if not tr.looks_like(" ".join(w.text for w in words), lang):
+            typer.secho(f"    Whisper did not hear {lang} here: the audio may be in another language", fg="yellow")

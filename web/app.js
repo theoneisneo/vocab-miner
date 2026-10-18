@@ -63,6 +63,9 @@ function savePrefs() { localStorageSet(PREFS_KEY, JSON.stringify(prefs)); }
 // ---------- state ----------
 let datasets = new Map();   // dataset id -> imported data file
 let data = null;            // the dataset of the song being shown
+const LANG_NAMES = { ja: "日文", en: "英文", ko: "韓文", zh: "中文" };
+const langName = (ds) => LANG_NAMES[(ds && ds.lang || "").split("-")[0]] || "外語";
+const SPACED_LANGS = new Set(["en", "ko", "fr", "de", "es", "it", "pt", "nl", "vi", "id"]);
 let known = new Map();      // word key -> true/false (overrides status from the data files; shared by all datasets)
 let lookups = new Map();    // word key -> how many times the word card was opened (words you keep checking)
 let layouts = new Map();    // dataset id -> your own song order with separators: [{t:"doc", id} | {t:"sep", label}]
@@ -400,9 +403,11 @@ async function renderDoc(dsId, ds, doc) {
   swipeable(rateBtn, (dir) => applyRate(stepRate(prefs.rate, dir)), () => applyRate(nextRate(prefs.rate)));
   const playable = !!(local || youtube);
   // row 1: what you press while singing; row 2: how lines are shown (set once, then fold away)
+  const has = (f) => doc.lines.some(f);
   const displayRow = el("div", { class: "toolbar display-row" + (playable && !prefs.showDisplay ? " collapsed" : "") },
-    chip("假名", "ruby"), chip("拼音", "romaji"), chip("中文", "tr"), chip("逐詞", "gloss"), chip("結構", "struct"),
-    doc.lines.some((l) => l.ex) ? chip("解說", "ex") : null);
+    has((l) => l.seg.some((s) => s[1])) ? chip("假名", "ruby") : null, has((l) => l.romaji) ? chip("拼音", "romaji") : null,
+    has((l) => l.tr) ? chip("中文", "tr") : null, chip("逐詞", "gloss"), chip("結構", "struct"),
+    has((l) => l.ex) ? chip("解說", "ex") : null);
   if (playable) {
     const label = () => (prefs.showDisplay ? "顯示 ▴" : "顯示 ▾");
     const toggle = el("button", { class: "chip toggle-chip", "aria-expanded": String(!!prefs.showDisplay),
@@ -418,9 +423,17 @@ async function renderDoc(dsId, ds, doc) {
       chip("單句重複", "loop", () => { loopLine = prefs.loop ? currentLine : -1; }), rateBtn, chip("跟隨", "follow"), toggle));
   }
   stick.append(displayRow);
-  stick.append(el("div", { class: "legend" },
-    el("span", { class: "role-prt" }, "助詞"), el("span", { class: "role-pred" }, "動詞・形容詞"),
-    el("span", { class: "role-aux" }, "時態・否定・句型"), el("span", { class: "legend-note" }, "動詞通常在句尾")));
+  stick.append(data.lang === "en"
+    ? el("div", { class: "legend" },
+        el("span", { class: "role-prt" }, "介系詞・連接詞"), el("span", { class: "role-pred" }, "動詞・形容詞"),
+        el("span", { class: "role-aux" }, "助動詞（be、can、will…）"))
+    : el("div", { class: "legend" },
+        el("span", { class: "role-prt" }, "助詞"), el("span", { class: "role-pred" }, "動詞・形容詞"),
+        el("span", { class: "role-aux" }, "時態・否定・句型"), el("span", { class: "legend-note" }, "動詞通常在句尾")));
+  if (doc.transcribed) {
+    stick.append(el("div", { class: "transcribed-note" },
+      "這首的歌詞是 AI 聽寫的（沒有找到正式歌詞），可能有聽錯的地方，請邊聽邊對照。"));
+  }
 
   if (timed) {
     const pick = () => { $("#media-file").dataset.target = mediaKey(doc); $("#media-file").click(); };
@@ -471,16 +484,21 @@ function renderLine(doc, line, i) {
   const wr = Array.isArray(line.wr) ? line.wr : [];
   // pieces of one token (or, in older files, of one word) share a block: the text, its romaji and its meaning
   let text = null, group;
+  // languages written with spaces: a token right after another one (", 's n't") hugs it in word-by-word mode
+  const spaced = SPACED_LANGS.has((data.lang || "").split("-")[0]);
+  let afterBlock = false;
   for (const s of line.seg) {
     const [t, ruby, wi = null, ti = null] = s;
     const node = ruby ? el("ruby", {}, t, el("rt", {}, ruby)) : document.createTextNode(t);
     const g = ti !== null ? `t${ti}` : wi !== null ? `w${wi}` : null;
-    if (g === null) { text = null; group = undefined; jp.append(node); continue; }
+    if (g === null) { text = null; group = undefined; jp.append(node); afterBlock = !/\s$/.test(t) && afterBlock; continue; }
     if (g !== group) {
       group = g;
       const w = wi !== null ? data.words[wi] : null;
       const r = w ? role(w) : "";
-      const cls = "w" + (!w ? " plain" : w.grammar ? " grammar" : isKnown(w) ? "" : " new") + (r ? ` role-${r}` : "");
+      const cls = "w" + (!w ? " plain" : w.grammar ? " grammar" : isKnown(w) ? "" : " new") + (r ? ` role-${r}` : "")
+        + (spaced && afterBlock ? " tight" : "");
+      afterBlock = true;
       const block = el("span", { class: cls, "data-w": wi === null ? null : wi });
       text = el("span", { class: "wt" });
       block.append(text);
@@ -773,23 +791,26 @@ function lineWords(line) {
 function linePrompt(doc, i) {
   const line = doc.lines[i];
   const prev = doc.lines[i - 1], next = doc.lines[i + 1];
+  const ja = data.lang === "ja";
   return [
-    "我在學日文，請用繁體中文解釋這句歌詞為什麼這樣翻譯。",
+    line.tr ? `我在學${langName(data)}，請用繁體中文解釋這句歌詞為什麼這樣翻譯。`
+      : `我在學${langName(data)}，請把這句歌詞翻成繁體中文，並解釋它的意思。`,
     `歌曲：${doc.title}`,
     `原文：${segText(line)}`,
-    `讀音：${segReading(line)}${line.romaji ? `（${line.romaji}）` : ""}`,
+    ja ? `讀音：${segReading(line)}${line.romaji ? `（${line.romaji}）` : ""}` : null,
     `逐詞：${lineWords(line)}`,
     prev ? `前一句：${segText(prev)}` : null,
     next ? `後一句：${segText(next)}` : null,
-    `現有翻譯：${line.tr || "（沒有）"}`,
-    "請說明：1. 句子結構（動詞在哪、助詞的作用） 2. 逐字直譯 3. 翻譯哪裡是意譯、為什麼 4. 值得記住的文法",
+    line.tr ? `現有翻譯：${line.tr}` : null,
+    ja ? "請說明：1. 句子結構（動詞在哪、助詞的作用） 2. 逐字直譯 3. 翻譯哪裡是意譯、為什麼 4. 值得記住的文法"
+      : "請說明：1. 句子結構（主詞、動詞、子句） 2. 自然的中文翻譯 3. 歌詞裡省略或倒裝的地方 4. 值得記住的片語或文法",
   ].filter(Boolean).join("\n");
 }
 
 function wordPrompt(w, doc, i) {
   const line = doc && doc.lines[i];
   return [
-    `我在學日文，請用繁體中文解釋「${w.lemma}${w.reading && w.reading !== w.lemma ? `（${w.reading}）` : ""}」這個詞。`,
+    `我在學${langName(data)}，請用繁體中文解釋「${w.lemma}${w.reading && w.reading !== w.lemma ? `（${w.reading}）` : ""}」這個詞。`,
     line ? `出現的句子：${segText(line)}` : null,
     line && line.tr ? `句子翻譯：${line.tr}` : null,
     w.zh ? `字典意思：${w.zh}` : null,
@@ -925,11 +946,20 @@ $("#menu").addEventListener("click", async (ev) => {
   if (action === "ask") openAskSettings();
   if (action === "import-known") $("#known-file").click();
   if (action === "export-known") {
-    const words = new Map();
-    for (const ds of datasets.values()) for (const w of ds.words) if (isKnown(w)) words.set(w.key, w);
-    const lines = [...words.values()].map((w) => `${w.lemma}\t${w.reading}`);
-    download("known-ja.txt", `# known words exported from Sing-along\n${lines.join("\n")}\n`);
-    toast(`已匯出 ${lines.length} 個詞；放到電腦的 data/known/ja.txt 即可同步到詞彙表與 Anki`);
+    const byLang = new Map();   // lang -> key -> word
+    for (const ds of datasets.values()) {
+      const lang = ds.lang || "ja";
+      if (!byLang.has(lang)) byLang.set(lang, new Map());
+      for (const w of ds.words) if (isKnown(w) && !w.foreign) byLang.get(lang).set(w.key, w);
+    }
+    const done = [];
+    for (const [lang, words] of byLang) {
+      if (!words.size) continue;
+      const lines = [...words.values()].map((w) => `${w.lemma}\t${w.reading}`);
+      download(`known-${lang}.txt`, `# known words exported from Sing-along\n${lines.join("\n")}\n`);
+      done.push(`${lines.length} 個${LANG_NAMES[lang] || lang}詞 → data/known/${lang}.txt`);
+    }
+    toast(done.length ? `已匯出：${done.join("；")}（放到電腦的對應位置即可同步）` : "還沒有標記已學會的詞");
   }
   if (action === "clear" && confirm("清除這個裝置上所有的資料檔、本機影音檔和學習紀錄？")) {
     for (const k of await kvKeys()) await kvDel(k);

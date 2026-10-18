@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 
-from ..model import NO_STATS_TAG, Token, Utterance, VocabEntry
+from ..model import NO_STATS_TAG, TRANSCRIBED_TAG, Token, Utterance, VocabEntry
 from ..render import segments
 
 FORMAT_VERSION = 1
@@ -70,10 +70,12 @@ def build_web_data(entries: Sequence[VocabEntry], grammar: Sequence[VocabEntry],
         doc = docs.get(k)
         if doc is None:
             doc = docs[k] = {"id": f"{u.source_id}/{u.doc_id}", "source": u.source_id, "doc": u.doc_id,
-                             "title": titles.get(k, u.doc_id), "media": None, "noStats": False, "lines": []}
+                             "title": titles.get(k, u.doc_id), "media": None, "noStats": False,
+                             "transcribed": False, "lines": []}
         if u.media is not None and doc["media"] is None:
             doc["media"] = {"kind": u.media.kind, "uri": u.media.uri}
         doc["noStats"] = doc["noStats"] or NO_STATS_TAG in u.tags
+        doc["transcribed"] = doc["transcribed"] or TRANSCRIBED_TAG in u.tags   # speech recognition: may be wrong
         toks = tokens.get(u.id, [])
         # seg: [text, ruby, word index or null, token index or null]; pieces of one token share the token index
         seg = [[s.text, s.ruby, index_of.get(toks[s.token].key) if s.token is not None else None, s.token]

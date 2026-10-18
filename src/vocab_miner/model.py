@@ -10,6 +10,8 @@ from typing import Literal
 # Utterances with this tag are left out of frequency/coverage statistics but may still be used as examples
 # (e.g. an alternate recording of a song that is already in the corpus).
 NO_STATS_TAG = "no-stats"
+# Text produced by speech recognition (e.g. Whisper): may contain mistakes, apps should say so.
+TRANSCRIBED_TAG = "transcribed"
 
 
 @dataclass(frozen=True)

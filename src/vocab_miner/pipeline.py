@@ -116,7 +116,11 @@ class Pipeline:
         return [instantiate(b, self.config) for b in self.config.get("dictionaries", DEFAULT_DICTIONARIES)]
 
     def romanizer(self):
-        return instantiate(self.config.get("romanizer"), self.config, "vocab_miner.tokenizers.ja:HepburnRomanizer")
+        """None when the language needs no romanization: `romanizer = false`, or no [romanizer] for non-Japanese."""
+        block = self.config.get("romanizer")
+        if block is False or (block is None and self.config.get("target_lang", "ja") != "ja"):
+            return None
+        return instantiate(block, self.config, "vocab_miner.tokenizers.ja:HepburnRomanizer")
 
     def vocab(self, source_ids: list[str] | None = None, doc_ids: list[str] | None = None,
               log: Callable[[str], None] = print) -> VocabResult:
@@ -165,7 +169,7 @@ class Pipeline:
 
             romanizer = self.romanizer()
             word = getattr(romanizer, "romanize_word", None)
-            for e in everything:
+            for e in everything if romanizer else ():
                 if e.reading:
                     e.romaji = word(e.lemma, e.reading, e.pos) if word else romanizer.romanize(e.reading)
 
