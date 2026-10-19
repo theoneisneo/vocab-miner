@@ -1,6 +1,7 @@
 """Command line interface: uv run vm <command>."""
 from __future__ import annotations
 
+import json
 import re
 import sys
 from collections import Counter
@@ -476,6 +477,8 @@ def transcribe_cmd(
     lang: Annotated[str, typer.Option(help="Language spoken/sung.")] = "en",
     model: Annotated[str, typer.Option(help="Whisper model.")] = "large-v3",
     force: Annotated[bool, typer.Option(help="Redo items that already have timed lyrics/subtitles.")] = False,
+    separate: Annotated[bool, typer.Option("--separate/--no-separate",
+                                           help="Separate the vocals first (Demucs; needs the 'separate' extra).")] = False,
 ):
     """Timed .lrc from audio with Whisper. With lyrics text, only the timing comes from Whisper."""
     from . import transcribe as tr
@@ -508,7 +511,13 @@ def transcribe_cmd(
         except Exception as e:  # noqa: BLE001 - one unavailable video should not stop the rest
             typer.secho(f"[{n}/{len(todo)}] {name} {title[:40]:<40} no audio: {str(e).splitlines()[0]}", fg="red")
             continue
-        words, heard = tr.transcribe(whisper, audio, lang)
+        if separate:
+            try:
+                audio = tr.separate_vocals(audio, Path(".cache") / "vocals")
+            except ImportError as e:
+                typer.secho(str(e), fg="red", err=True)
+                raise typer.Exit(1)
+        words, heard = tr.transcribe(whisper, audio, lang, vad=separate)
         text_file = (lyrics / f"{name}.txt") if lyrics else None
         if text_file and text_file.is_file():
             lines, kind = tr.align(tr.read_lyrics(text_file), words), "lyrics timed"
@@ -545,3 +554,63 @@ def yt_playlists(
             raise typer.Exit(1)
         youtube.write_list(path, entries)
         typer.echo(f"{pl.lang} {pl.album or '-':<14} {len(entries):3d} videos  {path}  ({title})")
+
+
+# ---------- sentence translations: you fill them in ----------
+
+@app.command(name="translate-todo")
+def translate_todo(
+    out: Annotated[Path, typer.Option("--out", "-o", help="To-do file to write (a .keys.json is written next to it).")],
+    lang: Annotated[str, typer.Option(help="Translation language.")] = "zh-Hant",
+    source: Annotated[list[str] | None, typer.Option("--source", "-s", help="Only these source ids.")] = None,
+    doc: Annotated[list[str] | None, typer.Option("--doc", "-d", help="Only these doc ids (e.g. one song).")] = None,
+    root: RootOpt = None,
+):
+    """Lines without a translation, numbered per doc, with instructions you can paste into a chat AI.
+    Translate them any way you like, then run `vm translate-import`."""
+    from . import translations as tr
+
+    cfg = _config(root)
+    utts = [u for sid, path in corpus_files(cfg).items() if not source or sid in source
+            for u in read_jsonl(path) if not doc or u.doc_id in doc]
+    if not utts:
+        typer.echo("no lines; run `vm ingest` first or check --source/--doc")
+        raise typer.Exit(1)
+    titles = {(u.source_id, u.doc_id): next((t[6:] for t in u.tags if t.startswith("title:")), u.doc_id) for u in utts}
+    sections = tr.todo_sections(utts, lang, titles)
+    if not sections:
+        typer.echo(f"every line already has a {lang} translation")
+        return
+    n = tr.write_todo(out, sections, lang, cfg.get("target_lang", "ja"))
+    typer.echo(f"{n} lines in {len(sections)} docs -> {out}")
+
+
+@app.command(name="translate-import")
+def translate_import(
+    file: Annotated[Path, typer.Argument(help="To-do file written by translate-todo, filled in.")],
+    root: RootOpt = None,
+):
+    """Check a filled-in to-do file line by line and store the translations; `vm ingest` applies them."""
+    from . import translations as tr
+
+    cfg = _config(root)
+    try:
+        res = tr.read_todo(file)
+        lang = json.loads(tr.keys_path(file).read_text(encoding="utf-8"))["lang"]
+    except FileNotFoundError as e:
+        typer.secho(f"{e.filename} not found: import the file written by translate-todo (and its .keys.json)",
+                    fg="red", err=True)
+        raise typer.Exit(1)
+    for p in res.problems:
+        typer.secho(f"  {p}", fg="yellow")
+    total = 0
+    for sid, rows in res.rows.items():
+        path = tr.store_path(cfg.data_dir, sid, lang)
+        store = tr.read_store(path)
+        store.update(rows)
+        tr.write_store(path, store)
+        total += len(rows)
+        typer.echo(f"{sid}: {len(rows)} translations -> {path}")
+    typer.echo(f"imported {total}" + (f", {res.untranslated} left untranslated" if res.untranslated else "")
+               + (f", {len(res.problems)} problem(s) above" if res.problems else "")
+               + ". Run `vm ingest` to apply.")

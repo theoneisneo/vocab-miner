@@ -14,6 +14,8 @@ from __future__ import annotations
 import difflib
 import os
 import re
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,9 +69,24 @@ def load_model(name: str = "large-v3", device: str = "auto"):
     return WhisperModel(name, device="cpu", compute_type="int8")
 
 
-def transcribe(model, audio: Path, lang: str) -> tuple[list[Word], list[Line]]:
-    """Word timings and Whisper's own lines. No VAD: music is not speech and VAD drops sung parts."""
-    segments, _ = model.transcribe(str(audio), language=lang, word_timestamps=True, vad_filter=False,
+def separate_vocals(audio: Path, cache: Path) -> Path:
+    """Vocals-only track (Demucs), cached as <cache>/htdemucs/<name>/vocals.wav. Same timeline as the song."""
+    out = cache / "htdemucs" / audio.stem / "vocals.wav"
+    if out.exists():
+        return out
+    try:
+        import demucs  # noqa: F401
+    except ImportError as e:
+        raise ImportError("vocal separation needs Demucs: uv sync --extra separate") from e
+    subprocess.run([sys.executable, "-m", "demucs", "--two-stems", "vocals", "-o", str(cache), str(audio)],
+                   check=True, capture_output=True)
+    return out
+
+
+def transcribe(model, audio: Path, lang: str, vad: bool = False) -> tuple[list[Word], list[Line]]:
+    """Word timings and Whisper's own lines. VAD only for vocals-only audio: with the band playing it drops
+    sung parts, but on a separated vocal track it skips the silent stretches where Whisper makes things up."""
+    segments, _ = model.transcribe(str(audio), language=lang, word_timestamps=True, vad_filter=vad,
                                    condition_on_previous_text=False)
     words: list[Word] = []
     lines: list[Line] = []

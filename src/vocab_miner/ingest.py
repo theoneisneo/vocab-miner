@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import translations
 from .config import Config, build_source
 from .model import NO_STATS_TAG, Utterance, write_jsonl
 
@@ -59,8 +60,10 @@ def ingest_source(block: dict[str, Any], config: Config) -> IngestResult:
 
     path = config.corpus_path(source_id)
     tmp = path.with_suffix(".jsonl.tmp")
+    stores = translations.stores_for(config.data_dir, source_id)    # your own translations (vm translate-import)
     try:
-        n = write_jsonl(tmp, track(checked(source.utterances(), source_id, no_stats, block.get("add_tags", []))))
+        n = write_jsonl(tmp, track(translations.apply(
+            checked(source.utterances(), source_id, no_stats, block.get("add_tags", [])), stores)))
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise

@@ -290,7 +290,25 @@ uv run vm transcribe recordings/*.mp4 -o data/raw/transcripts                 # 
 - 一首歌在 RTX 3090 上約 40 秒；沒有 GPU 也能跑，但慢很多（可以用 `--model small` 加快）。
 - Whisper 被指定語言時仍會照它聽到的語言寫；結果明顯不是指定語言時，指令會提醒你（例如影片其實是原文版）。
 
-## 14. 另一種語言（例如英文）
+## 14. 整句翻譯：你來當「API」
+
+素材沒有附翻譯時，用待辦檔補上：程式整理出還沒翻譯的句子，你用任何方式翻（聊天 AI、翻譯網站、朋友、自己），再匯入。
+不需要 API 金鑰。
+
+```bash
+uv run vm translate-todo -o todo.txt          # 每首歌一段，「編號|原文」，開頭附翻譯指示
+# 把 todo.txt 整份貼給聊天 AI（或自己翻），把回覆整份貼回 todo.txt 存檔
+uv run vm translate-import todo.txt           # 逐行檢查後存起來
+uv run vm ingest                              # 套用翻譯
+```
+
+- 重複的句子（副歌）只列一次。`--doc <id>` 只匯出某首，`--lang` 指定翻譯語言（預設 `zh-Hant`）。
+- 匯入時會列出缺漏的句子、多出來的行、沒翻的行；沒翻好的下次 `translate-todo` 會再列出來。
+- 翻譯存在 `data/translations/<source_id>.<語言>.tsv`，依「歌曲＋原文」對應：重新對時間或換成更正確的歌詞時，
+  沒變的句子不用重翻。素材本身附的翻譯（例如雙語字幕）不會被覆蓋。
+- 不要刪掉 `todo.txt` 旁邊的 `todo.txt.keys.json`：匯入時靠它知道每個編號對應哪一句。
+
+## 15. 另一種語言（例如英文）
 
 每種語言用自己的專案資料夾（自己的設定、索引和輸出），跟唱網頁可以同時匯入多份資料。英文需要 `uv sync --extra en`（spaCy）。
 
