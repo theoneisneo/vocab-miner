@@ -288,6 +288,8 @@ uv run vm transcribe recordings/*.mp4 -o data/raw/transcripts                 # 
 - **完全沒有文字**：用 Whisper 聽寫的結果。歌聲常會聽錯，檔頭會標明是轉寫，請對照原曲修正。
 - 結果寫成 `<名稱>.lrc`，可以直接手動修改，再用 `LrcSource` 匯入。已經有 `.lrc`／`.vtt`／`.srt` 的會跳過（`--force` 重做）。
 - 一首歌在 RTX 3090 上約 40 秒；沒有 GPU 也能跑，但慢很多（可以用 `--model small` 加快）。
+- `--separate`：先用 Demucs 分離人聲再轉寫（`uv sync --extra separate`，會下載約 2.5 GB 的 GPU 版 PyTorch）。
+  三首歌的實測，錯字率降低 0～4 個百分點、每首多約 16 秒；適合沒有歌詞、只能靠轉寫的歌。
 - Whisper 被指定語言時仍會照它聽到的語言寫；結果明顯不是指定語言時，指令會提醒你（例如影片其實是原文版）。
 
 ## 14. 整句翻譯：你來當「API」

@@ -84,8 +84,8 @@ def separate_vocals(audio: Path, cache: Path) -> Path:
 
 
 def transcribe(model, audio: Path, lang: str, vad: bool = False) -> tuple[list[Word], list[Line]]:
-    """Word timings and Whisper's own lines. VAD only for vocals-only audio: with the band playing it drops
-    sung parts, but on a separated vocal track it skips the silent stretches where Whisper makes things up."""
+    """Word timings and Whisper's own lines. VAD is off by default: it drops softly sung parts, even on a
+    separated vocal track (measured on three songs: vocals only 17-33% word errors, vocals + VAD 22-34%)."""
     segments, _ = model.transcribe(str(audio), language=lang, word_timestamps=True, vad_filter=vad,
                                    condition_on_previous_text=False)
     words: list[Word] = []

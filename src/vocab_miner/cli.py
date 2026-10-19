@@ -517,7 +517,7 @@ def transcribe_cmd(
             except ImportError as e:
                 typer.secho(str(e), fg="red", err=True)
                 raise typer.Exit(1)
-        words, heard = tr.transcribe(whisper, audio, lang, vad=separate)
+        words, heard = tr.transcribe(whisper, audio, lang)
         text_file = (lyrics / f"{name}.txt") if lyrics else None
         if text_file and text_file.is_file():
             lines, kind = tr.align(tr.read_lyrics(text_file), words), "lyrics timed"

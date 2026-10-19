@@ -25,6 +25,9 @@ whisper = [
     "nvidia-cudnn-cu12>=9,<10; sys_platform != 'darwin'",
 ]
 
+# vocal separation before Whisper (vm transcribe --separate); GPU PyTorch from PyTorch's index, see [tool.uv.sources]
+separate = ["demucs>=4.0", "torch>=2.5", "torchaudio>=2.5"]
+
 [project.scripts]
 vm = "vocab_miner.cli:app"
 
@@ -33,6 +36,13 @@ dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.uv.sources]
 en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+torch = [{ index = "pytorch-cu124", marker = "sys_platform != 'darwin'" }]
+torchaudio = [{ index = "pytorch-cu124", marker = "sys_platform != 'darwin'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]
