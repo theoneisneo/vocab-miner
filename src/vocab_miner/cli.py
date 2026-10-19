@@ -531,7 +531,7 @@ def transcribe_cmd(
         if text_file and text_file.is_file():
             lines, kind = tr.align(tr.read_lyrics(text_file), words), "lyrics timed"
         else:
-            lines, kind = heard, "transcribed (check for mistakes)"
+            lines, kind = tr.drop_made_up(heard), "transcribed (check for mistakes)"
         (out / f"{name}.lrc").write_text(tr.to_lrc(lines, title, transcribed=kind != "lyrics timed"), encoding="utf-8")
         typer.echo(f"[{n}/{len(todo)}] {name} {title[:40]:<40} {len(lines)} lines, {kind}")
         if not tr.looks_like(" ".join(w.text for w in words), lang):
@@ -623,3 +623,65 @@ def translate_import(
     typer.echo(f"imported {total}" + (f", {res.untranslated} left untranslated" if res.untranslated else "")
                + (f", {len(res.problems)} problem(s) above" if res.problems else "")
                + ". Run `vm ingest` to apply.")
+
+
+@app.command(name="yt-lyrics")
+def yt_lyrics(
+    items: Annotated[list[str], typer.Argument(help="List files from yt-list / yt-playlists.")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Folder for <video id>.lrc / .txt.")],
+    lang: Annotated[str, typer.Option(help="Language the lyrics must be in.")] = "en",
+    artist: Annotated[str | None, typer.Option(help="Artist (default: from each video's channel name).")] = None,
+):
+    """Timed lyrics from LRCLIB for each video; plain lyrics as .txt (time them with vm transcribe --lyrics)."""
+    from .fetch import lrclib, youtube
+    rows = [r for item in items for r in youtube.read_list(Path(item))]
+    results = lrclib.fetch_lyrics(rows, output, lang, artist, progress=lambda n, total, r: typer.echo(
+        f"[{n}/{total}] {r.title[:40]:<40} {r.status} {r.detail}"))
+    counts = Counter(r.status for r in results)
+    typer.echo(" · ".join(f"{k} {v}" for k, v in sorted(counts.items())) or "nothing to look up")
+
+
+@app.command(name="quality")
+def quality_cmd(
+    folder: Annotated[Path, typer.Argument(help="Folder of timed lyrics / subtitles (.lrc .vtt .srt).")],
+    lang: Annotated[str, typer.Option(help="Language the lines should be in.")] = "en",
+    video_list: Annotated[list[Path] | None, typer.Option("--video-list", help="List files for titles and lengths.")] = None,
+):
+    """Grade every file: ok / check / problem, with the reasons. Writes <folder>/quality.tsv."""
+    from . import quality
+    reports = quality.check_folder(folder, lang, video_list or [folder / "videos.tsv"])
+    quality.write_report(folder / "quality.tsv", reports)
+    _print_quality(reports, folder / "quality.tsv")
+
+
+def _print_quality(reports, path: Path) -> None:
+    for r in reports:
+        if r.grade != "ok":
+            typer.secho(f"  {r.grade:<7} {(r.title or r.id)[:36]:<36} {'; '.join(r.notes)}",
+                        fg="red" if r.grade == "problem" else "yellow")
+    counts = Counter(r.grade for r in reports)
+    typer.echo(f"ok {counts['ok']} · check {counts['check']} · problem {counts['problem']} -> {path}")
+
+
+@app.command(name="songs")
+def songs_cmd(
+    playlists: Annotated[Path, typer.Argument(help="Playlists file: one 'language | album | url' per line.")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Folder for the timed lyrics of this language.")],
+    lang: Annotated[str, typer.Option(help="Language of the songs to collect.")] = "en",
+    whisper: Annotated[bool, typer.Option("--whisper/--no-whisper", help="Use Whisper for what is still missing.")] = True,
+    separate: Annotated[bool, typer.Option("--separate/--no-separate", help="Separate vocals before Whisper.")] = False,
+    model: Annotated[str, typer.Option(help="Whisper model.")] = "large-v3",
+    list_dir: Annotated[Path, typer.Option(help="Where video lists and audio are kept.")] = YT_DIR,
+):
+    """Playlists -> uploader subtitles -> LRCLIB -> Whisper -> quality report, skipping songs already done."""
+    from . import songs
+    try:
+        res = songs.run(playlists, lang, output, list_dir, whisper, separate, model, log=typer.echo)
+    except (ValueError, ImportError) as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"\n{res.songs} songs: {res.already} already done, {res.subtitles} uploader subtitles, "
+               f"{res.synced} synced lyrics, {res.plain} plain lyrics, {res.timed} timed with Whisper, "
+               f"{res.transcribed} transcribed" + (f"; still missing: {', '.join(res.missing)}" if res.missing else ""))
+    _print_quality(res.reports, output / "quality.tsv")
+    typer.echo(f"Song list with clean titles: {output / 'videos.tsv'} (use it as the source's video_list)")

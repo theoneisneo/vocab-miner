@@ -172,6 +172,15 @@ def to_lrc(lines: list[Line], title: str = "", transcribed: bool = False) -> str
 
 LATIN_LANGS = {"en", "fr", "de", "es", "it", "pt", "nl", "id", "vi"}
 
+# Whisper was trained on video subtitles and fills silence with their sign-offs
+MADE_UP = re.compile(r"^\W*(thanks?( you)?( so much)? for watching|thank you( very much)?|please subscribe|"
+                     r"subscribe|subtitles? by\b.*|ご視聴ありがとうございました|チャンネル登録.*)\W*$", re.IGNORECASE)
+
+
+def drop_made_up(lines: list[Line]) -> list[Line]:
+    """Without Whisper's stock sign-off lines ("Thanks for watching!")."""
+    return [ln for ln in lines if not MADE_UP.match(ln.text)]
+
 
 def looks_like(text: str, lang: str) -> bool:
     """Rough check that a transcription is in `lang`: for Latin-script languages most letters are Latin.

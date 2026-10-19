@@ -301,7 +301,33 @@ uv run vm transcribe recordings/*.mp4 -o data/raw/transcripts                 # 
   三首歌的實測，錯字率降低 0～4 個百分點、每首多約 16 秒；適合沒有歌詞、只能靠轉寫的歌。
 - Whisper 被指定語言時仍會照它聽到的語言寫；結果明顯不是指定語言時，指令會提醒你（例如影片其實是原文版）。
 
-## 14. 整句翻譯：你來當「API」
+## 14. 一鍵收集：從播放清單到時間軸歌詞
+
+把第 12、13 節的步驟串起來：
+
+```bash
+uv run vm songs data/playlists.txt --lang en -o data/raw/english
+```
+
+1. 播放清單檔裡該語言的清單 → 影片表（`vm yt-playlists`）
+2. 上傳者提供的字幕（`vm yt-subs`）
+3. LRCLIB：社群整理的公開歌詞資料庫，有時間軸的直接用、純文字的存成 `.txt`（`vm yt-lyrics`）
+4. Whisper：純文字歌詞補上時間、什麼都沒找到的轉寫（`vm transcribe`；`--no-whisper` 跳過、`--separate` 先分離人聲）
+5. 品質報告 `quality.tsv`（`vm quality`）
+
+- 已經有歌詞檔的歌會跳過，同一首歌的不同上傳（MV 和純音樂版）只算一次。
+- Prologue、Interlude、Cross Fade 這類不是歌的影片會略過；播放清單裡混了其他語言的版本，把影片 ID 或歌名寫進
+  輸出資料夾的 `skip.txt`（一行一個）。
+- 輸出資料夾的 `videos.tsv` 是整理過歌名的歌曲清單，設定成 source 的 `video_list`，每句就能連到影片。
+
+**品質報告**：每首歌標成 `ok`（可以直接用）、`check`（建議看一下：AI 轉寫、歌詞在影片結束前很早就停、Whisper 自己
+加的「Thanks for watching」）、`problem`（大概有錯：主要不是該語言、歌詞比影片長、幾乎沒有內容）。也可以單獨執行：
+
+```bash
+uv run vm quality data/raw/english --lang en
+```
+
+## 15. 整句翻譯：你來當「API」
 
 素材沒有附翻譯時，用待辦檔補上：程式整理出還沒翻譯的句子，你用任何方式翻（聊天 AI、翻譯網站、朋友、自己），再匯入。
 不需要 API 金鑰。
@@ -319,7 +345,7 @@ uv run vm ingest                              # 套用翻譯
   沒變的句子不用重翻。素材本身附的翻譯（例如雙語字幕）不會被覆蓋。
 - 不要刪掉 `todo.txt` 旁邊的 `todo.txt.keys.json`：匯入時靠它知道每個編號對應哪一句。
 
-## 15. 另一種語言（例如英文）
+## 16. 另一種語言（例如英文）
 
 每種語言用自己的專案資料夾（自己的設定、索引和輸出），跟唱網頁可以同時匯入多份資料。英文需要 `uv sync --extra en`（spaCy）。
 

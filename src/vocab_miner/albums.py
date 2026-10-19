@@ -22,14 +22,20 @@ DECORATIONS = [
 BRACKETED = re.compile(r"「([^」]+)」")                              # ARTIST「朝の雨」 Official Music Video
 
 
-def title_key(title: str, aliases: Mapping[str, str] | None = None) -> str:
+def clean_title(title: str) -> str:
+    """The song title without the usual decorations: "ARTIST / Title (English Version) Official Music Video"."""
     t = title
     for rx in DECORATIONS:
         t = rx.sub(" ", t)
     m = BRACKETED.search(t)
     if m:
         t = m.group(1)
-    key = re.sub(r"\W+", "", t).casefold()
+    t = re.sub(r"[(\[]\s*[)\]]", " ", t)          # brackets emptied by the removals above
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def title_key(title: str, aliases: Mapping[str, str] | None = None) -> str:
+    key = re.sub(r"\W+", "", clean_title(title)).casefold()
     if aliases:
         key = {title_key(k): title_key(v) for k, v in aliases.items()}.get(key, key)
     return key
