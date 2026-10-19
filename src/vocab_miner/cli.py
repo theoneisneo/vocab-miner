@@ -212,6 +212,15 @@ def web(
     write_web_data(data, path)
     typer.echo(f"{len(data['docs'])} docs, {len(utts)} lines, {len(data['words'])} words -> {path} "
                f"({path.stat().st_size // 1024} KB)")
+    # extra copies, e.g. a synced cloud folder the phone can open: [web] copy_to = ["..."], file_name = "..."
+    import shutil
+    for folder in wcfg.get("copy_to", []):
+        dest = cfg.resolve(folder)
+        if not dest.is_dir():
+            typer.secho(f"copy_to folder not found, skipped: {dest}", fg="yellow")
+            continue
+        shutil.copyfile(path, dest / wcfg.get("file_name", path.name))
+        typer.echo(f"  copied -> {dest / wcfg.get('file_name', path.name)}")
 
 
 @app.command()

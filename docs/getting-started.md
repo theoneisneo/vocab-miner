@@ -243,6 +243,15 @@ uv run vm web                        # 在網頁裡「更新資料」
 
 索引只會重新處理有變動的素材，所以素材變多也不會越跑越慢。
 
+**把資料檔同步到手機**：在設定檔加上下面兩行，`vm web` 每次產生資料檔後會自動多複製一份到指定資料夾
+（例如和 Google Drive、Dropbox 同步的資料夾，手機上直接從雲端開檔匯入）：
+
+```toml
+[web]
+file_name = "my_songs.json"            # 複製出去的檔名（預設 songs.json）
+copy_to = ["D:/CloudDrive/vocab"]      # 可以寫好幾個資料夾；資料夾不存在時會略過並提醒
+```
+
 ## 12. 從 YouTube 播放清單開始
 
 跟唱網頁播的是 YouTube 影片，所以「一個播放清單」很適合當收集素材的起點。（yt-dlp 已包含在依賴裡，`uv sync` 就會裝好。YouTube 改版後若抓不到，`uv lock --upgrade-package yt-dlp` 更新它。）
