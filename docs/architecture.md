@@ -95,7 +95,8 @@ Source 提供 `reading_hint`（例如歌詞的注音假名）時，Index 建立�
 用**黑本式（Hepburn）**：它本來就是為英語使用者設計的，拼法最接近英文直覺（し=shi、ち=chi、つ=tsu、ふ=fu、じ=ji）。
 - 不用長音符號（ō），長音照假名寫（とうきょう → toukyou），讓拼音和假名一一對應，方便同時學假名。
 - 助詞照發音：は→wa、へ→e、を→o。
-- 候選實作：`cutlet`（建立在 fugashi 上，處理助詞和長音）。拼音規則做成 Romanizer 的設定。
+- 實作：`tokenizers/ja.py` 的 `HepburnRomanizer`（從 fugashi 的讀音轉換），逐詞產生拼音以對應分詞，
+  處理跨詞的促音（行って → itte）和助詞讀法；長音符號是設定（`macrons`）。
 
 ### 釋義的來源
 多個 Dictionary 依序查詢，每種語言取第一個有結果的。
