@@ -353,10 +353,26 @@ function findVersion(alt) {
   return null;
 }
 
+/** "yoru ni kakeru · よるにかける" for a title written in kana/kanji: romaji first, kana after. */
+function titleReading(d) {
+  return d ? [d.titleRomaji, d.titleReading].filter(Boolean).join(" · ") : "";
+}
+
+/** Other-language titles of a song, each with its reading when that data file is loaded. */
+function altTitles(d) {
+  return (Array.isArray(d.alt) ? d.alt : []).map((a) => {
+    const hit = findVersion(a);
+    const r = hit ? titleReading(hit[1]) : "";
+    return r ? `${a.title}（${r}）` : a.title;
+  }).join(" · ");
+}
+
 function renderVersions(doc) {
   const alts = Array.isArray(doc.alt) ? doc.alt : [];
-  if (!alts.length && !(doc.labels || []).length) return null;
+  const reading = titleReading(doc);
+  if (!alts.length && !(doc.labels || []).length && !reading) return null;
   return el("div", { class: "versions" },
+    reading ? el("div", { class: "title-reading" }, reading) : null,
     (doc.labels || []).map((l) => el("span", { class: "song-label" }, l)),
     alts.map((a) => {
       const hit = findVersion(a);
@@ -371,7 +387,8 @@ function songRow(id, ds, d, controls = null) {
   const s = docStats(ds, d);
   const body = [
     el("div", { class: "song-title" }, d.title,
-      Array.isArray(d.alt) && d.alt.length ? el("div", { class: "song-alt" }, d.alt.map((a) => a.title).join(" · ")) : null,
+      titleReading(d) ? el("div", { class: "song-reading" }, titleReading(d)) : null,
+      Array.isArray(d.alt) && d.alt.length ? el("div", { class: "song-alt" }, altTitles(d)) : null,
       el("div", { class: "song-sub" }, `${d.lines.length} 句 · 生詞 ${s.fresh}`,
         (d.labels || []).map((l) => el("span", { class: "song-label" }, l)))),
     el("div", { class: "meter" }, `已懂 ${s.pct}%`, el("div", { class: "meter-bar" }, el("span", { style: `width:${s.pct}%` })))];

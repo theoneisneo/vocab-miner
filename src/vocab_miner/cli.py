@@ -201,8 +201,16 @@ def web(
     lang = cfg.get("target_lang", "ja")
     aliases = wcfg.get("title_aliases")
     from .albums import clean_title
+    has_kana = re.compile(r"[぀-ヿ㐀-鿿]")
     for d in data["docs"]:               # "ARTIST / Title (English Version)" -> "Title"
         d["title"] = clean_title(d["title"]) or d["title"]
+        if has_kana.search(d["title"]):      # reading and romaji of a title written in kana/kanji
+            toks = pipe.tokenizer.tokenize(d["title"])
+            reading = "".join(t.reading or t.surface for t in toks)
+            if reading and reading != d["title"]:
+                d["titleReading"] = reading
+            if romanizer and getattr(romanizer, "romanize_tokens", None):
+                d["titleRomaji"] = romanizer.romanize_tokens(toks)
     versions = []
     if wcfg.get("versions"):             # the same songs in other languages: [web] versions = "data/song_pairs.tsv"
         from .albums import add_versions, read_versions
