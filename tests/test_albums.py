@@ -37,3 +37,21 @@ def test_build_albums(tmp_path):
     assert albums == [{"id": "first-ep", "title": "First EP", "docs": ["s/v1"]},       # matched by video id
                       {"id": "second-ep", "title": "Second EP", "docs": ["s/v2"]}]     # by title; v1 only once
     assert build_albums(playlists, "ja", tmp_path, docs) == []                         # list file missing
+
+
+def test_versions_and_albums_of_another_language(tmp_path):
+    from vocab_miner.albums import add_versions, albums_in, read_versions
+    (tmp_path / "pairs.tsv").write_text("ja\ten\n朝の雨\tMorning Rain\n夜のバス\tNight Bus\n", encoding="utf-8")
+    versions = read_versions(tmp_path / "pairs.tsv")
+    assert versions == [{"ja": "朝の雨", "en": "Morning Rain"}, {"ja": "夜のバス", "en": "Night Bus"}]
+    pl = tmp_path / "playlists.txt"
+    pl.write_text("ja | 一枚目 | https://www.youtube.com/playlist?list=PLj\n", encoding="utf-8")
+    playlists = read_playlists(pl)
+    write_list(list_file(tmp_path, playlists[0]), [{"id": "j2", "title": "夜のバス", "channel": "", "duration": ""},
+                                                   {"id": "j1", "title": "朝の雨", "channel": "", "duration": ""}])
+    docs = [{"id": "e/1", "title": "Morning Rain", "media": None}, {"id": "e/2", "title": "Night Bus", "media": None},
+            {"id": "e/3", "title": "Lonely Song", "media": None}]
+    assert set(add_versions(docs, versions, "en")) == {"e/1", "e/2"}
+    assert docs[0]["alt"] == [{"lang": "ja", "title": "朝の雨"}] and "alt" not in docs[2]
+    albums = albums_in(docs, playlists, "ja", "en", tmp_path, versions)
+    assert albums == [{"id": "一枚目", "title": "一枚目", "docs": ["e/2", "e/1"]}]     # the Japanese album's order

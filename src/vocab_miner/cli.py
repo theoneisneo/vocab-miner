@@ -198,12 +198,33 @@ def web(
                           romanize_token_list=getattr(romanizer, "romanize_token_list", None),
                           explanations=explanations, foreign=res.foreign)
     wcfg = cfg.get("web", {})
+    lang = cfg.get("target_lang", "ja")
+    aliases = wcfg.get("title_aliases")
+    from .albums import clean_title
+    for d in data["docs"]:               # "ARTIST / Title (English Version)" -> "Title"
+        d["title"] = clean_title(d["title"]) or d["title"]
+    versions = []
+    if wcfg.get("versions"):             # the same songs in other languages: [web] versions = "data/song_pairs.tsv"
+        from .albums import add_versions, read_versions
+        versions = read_versions(cfg.resolve(wcfg["versions"]))
+        found = add_versions(data["docs"], versions, lang, aliases)
+        typer.echo(f"versions in other languages: {len(found)} of {len(data['docs'])} songs")
     if wcfg.get("playlists"):            # albums: [web] playlists = "data/playlists.txt"
-        from .albums import build_albums
+        from .albums import albums_in, build_albums
         from .fetch.youtube import read_playlists
-        data["albums"] = build_albums(read_playlists(cfg.resolve(wcfg["playlists"])), cfg.get("target_lang", "ja"),
-                                      cfg.resolve(wcfg.get("playlist_dir", "data/raw/youtube")), data["docs"],
-                                      wcfg.get("title_aliases"))
+        playlists = read_playlists(cfg.resolve(wcfg["playlists"]))
+        list_dir = cfg.resolve(wcfg.get("playlist_dir", "data/raw/youtube"))
+        album_lang = wcfg.get("album_lang", lang)
+        own = build_albums(playlists, lang, list_dir, data["docs"], aliases)
+        if album_lang != lang and versions:
+            # grouped and ordered like the other language's albums; the song's own album becomes a label
+            data["albums"] = albums_in(data["docs"], playlists, album_lang, lang, list_dir, versions, aliases)
+            label = {d: a["title"] for a in own for d in a["docs"]}
+            for d in data["docs"]:
+                if d["id"] in label:
+                    d["labels"] = [label[d["id"]]]
+        else:
+            data["albums"] = own
         placed = {d for a in data["albums"] for d in a["docs"]}
         other = [d["title"] for d in data["docs"] if d["id"] not in placed]
         typer.echo("albums: " + ", ".join(f"{a['title']} ({len(a['docs'])})" for a in data["albums"])

@@ -340,10 +340,40 @@ function renderAll(id, ds, v) {
   return out;
 }
 
+// ---------- the same song in another language ----------
+const titleNorm = (t) => String(t || "").toLowerCase().replace(/[\p{P}\p{S}\s]+/gu, "");
+
+/** [data file id, doc] of a version listed in doc.alt, if that language's data file is loaded. */
+function findVersion(alt) {
+  for (const [id, ds] of datasets) {
+    if ((ds.lang || "").split("-")[0] !== (alt.lang || "").split("-")[0]) continue;
+    const doc = ds.docs.find((d) => titleNorm(d.title) === titleNorm(alt.title));
+    if (doc) return [id, doc];
+  }
+  return null;
+}
+
+function renderVersions(doc) {
+  const alts = Array.isArray(doc.alt) ? doc.alt : [];
+  if (!alts.length && !(doc.labels || []).length) return null;
+  return el("div", { class: "versions" },
+    (doc.labels || []).map((l) => el("span", { class: "song-label" }, l)),
+    alts.map((a) => {
+      const hit = findVersion(a);
+      const name = LANG_NAMES[(a.lang || "").split("-")[0]] || a.lang;
+      return hit
+        ? el("a", { class: "chip small-chip version-link", href: docRoute(hit[0], hit[1]) }, `切換到${name}版：${a.title}`)
+        : el("span", { class: "hint" }, `${name}版：${a.title}（匯入${name}資料後可以切換）`);
+    }));
+}
+
 function songRow(id, ds, d, controls = null) {
   const s = docStats(ds, d);
   const body = [
-    el("div", { class: "song-title" }, d.title, el("div", { class: "song-sub" }, `${d.lines.length} 句 · 生詞 ${s.fresh}`)),
+    el("div", { class: "song-title" }, d.title,
+      Array.isArray(d.alt) && d.alt.length ? el("div", { class: "song-alt" }, d.alt.map((a) => a.title).join(" · ")) : null,
+      el("div", { class: "song-sub" }, `${d.lines.length} 句 · 生詞 ${s.fresh}`,
+        (d.labels || []).map((l) => el("span", { class: "song-label" }, l)))),
     el("div", { class: "meter" }, `已懂 ${s.pct}%`, el("div", { class: "meter-bar" }, el("span", { style: `width:${s.pct}%` })))];
   const fav = isFav(id, d.id);
   return el("li", { class: "song-row" },
@@ -529,6 +559,8 @@ async function renderDoc(dsId, ds, doc) {
             youtube ? "改用手機裡的影片／音檔播放" : "選擇手機裡的影片／音檔來播放")));
   }
 
+  const versions = renderVersions(doc);
+  if (versions) root.append(versions);
   const lesson = renderLesson(doc);
   if (lesson) root.append(lesson);
   root.append(el("ol", { class: "lines" }, doc.lines.map((line, i) => renderLine(doc, line, i))));

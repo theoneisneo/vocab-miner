@@ -69,3 +69,46 @@ def build_albums(playlists: Sequence[Playlist], lang: str, list_dir: Path, docs:
         else:
             album["docs"] += members                     # one album split over several playlists
     return albums
+
+
+# ---------- versions of one song in several languages ----------
+
+def read_versions(path: Path) -> list[dict[str, str]]:
+    """A tab-separated table whose header is language codes (e.g. "ja  en"); each row is one song, giving its
+    title in each language that has a version of it."""
+    import csv
+    rows = csv.DictReader(path.read_text(encoding="utf-8-sig").splitlines(), delimiter="\t")
+    return [{lang.strip(): (t or "").strip() for lang, t in r.items() if lang and (t or "").strip()} for r in rows]
+
+
+def add_versions(docs: Sequence[dict], versions: Sequence[dict[str, str]], lang: str,
+                 aliases: Mapping[str, str] | None = None) -> dict[str, dict[str, str]]:
+    """Give each doc an "alt" list: the same song in the other languages ([{lang, title}]). Returns
+    {doc id: row} for the docs that were found in the table."""
+    base = lang.split("-")[0]
+    by_key = {title_key(v[k], aliases): v for v in versions for k in v if k.split("-")[0] == base}
+    found = {}
+    for d in docs:
+        row = by_key.get(title_key(d["title"], aliases))
+        if row is None:
+            continue
+        found[d["id"]] = row
+        alt = [{"lang": k, "title": t} for k, t in row.items() if k.split("-")[0] != base]
+        if alt:
+            d["alt"] = alt
+    return found
+
+
+def albums_in(docs: Sequence[dict], playlists: Sequence[Playlist], album_lang: str, lang: str, list_dir: Path,
+              versions: Sequence[dict[str, str]], aliases: Mapping[str, str] | None = None) -> list[dict]:
+    """Albums of another language's playlists (e.g. group English versions by the Japanese originals' albums),
+    in that order. A doc joins the album of its version in `album_lang`; docs without one are left out."""
+    rows = add_versions([dict(d) for d in docs], versions, lang, aliases)
+    base = album_lang.split("-")[0]
+    proxies = []
+    for d in docs:
+        row = rows.get(d["id"], {})
+        title = next((t for k, t in row.items() if k.split("-")[0] == base), None)
+        if title:
+            proxies.append({"id": d["id"], "title": title, "media": None})
+    return build_albums(playlists, album_lang, list_dir, proxies, aliases)

@@ -281,7 +281,17 @@ uv run vm yt-playlists data/playlists.txt      # 存下每個清單的影片表�
 ```
 
 設定 `[web] playlists = "data/playlists.txt"` 後，`vm web` 會依影片 ID 或歌名把歌曲分到專輯（每首只放在第一張收錄它的專輯），
-網頁首頁的「全部」就會依專輯分組。歌名寫法不同對不上時，用 `[web] title_aliases = { "清單上的歌名" = "資料裡的歌名" }`。
+網頁首頁的「全部」就會依專輯分組。
+
+**同一首歌的其他語言版本**（例如原曲和英文版）：寫一份對照表，表頭是語言代碼，一行一首歌：
+
+```
+ja	en
+朝の雨	Morning Rain
+```
+
+`[web] versions = "data/song_pairs.tsv"` 讓網頁顯示另一語言的歌名、可以在兩個版本之間切換；在翻唱版那邊再加
+`[web] album_lang = "ja"`，就會照原曲的專輯分組和排序（兩份資料順序相同），翻唱版自己的專輯改成歌名旁的小標籤。歌名寫法不同對不上時，用 `[web] title_aliases = { "清單上的歌名" = "資料裡的歌名" }`。
 
 ## 13. 沒有時間軸：用 Whisper 產生
 
