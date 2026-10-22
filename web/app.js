@@ -240,7 +240,16 @@ function renderHome() {
   }
   const often = renderOftenLooked();
   if (often) view.append(often);
-  for (const [id, ds] of datasets) view.append(renderDataset(id, ds));
+  // one tab per data file (e.g. Japanese / English); the last one opened is remembered on this device
+  const ids = [...datasets.keys()];
+  const current = ids.includes(prefs.homeDs) ? prefs.homeDs : ids[0];
+  if (ids.length > 1) {
+    view.append(el("div", { class: "tabs ds-tabs", role: "tablist" }, ids.map((id) => el("button", {
+      class: "tab", role: "tab", "aria-selected": String(id === current),
+      onclick: () => { prefs.homeDs = id; editingFav = null; savePrefs(); renderHome(); },
+    }, datasets.get(id).title || id))));
+  }
+  view.append(renderDataset(current, datasets.get(current)));
   view.append(el("div", { class: "home-actions" },
     el("button", { class: "secondary", onclick: () => $("#file").click() }, "匯入或更新資料檔（songs.json）"),
     FEATURES.create ? el("button", { class: "secondary", onclick: () => openFeature("create") }, "在這裡建立一首歌") : null,
@@ -638,10 +647,16 @@ function renderLesson(doc) {
   const fresh = songNewWords(doc);
   if (!fresh.length) return null;
   const first = fresh.slice(0, LESSON_SIZE);
+  const rest = fresh.slice(LESSON_SIZE);
+  const button = ({ w, n, line }) => wordButton("lesson-word", w, `×${n}`, (b) => openWord(w, b, doc, line));
+  const more = rest.length ? el("details", { class: "lesson-more", open: !!prefs.lessonMore },
+    el("summary", {}, `其他 ${rest.length} 個生詞`),
+    el("div", { class: "lesson-words" }, rest.map(button))) : null;
+  if (more) more.addEventListener("toggle", () => { prefs.lessonMore = more.open; savePrefs(); });
   const card = el("details", { class: "lesson", open: prefs.lessonOpen !== false },
     el("summary", {}, `這首先學這 ${first.length} 個詞`, el("span", { class: "lesson-sub" }, `（這首共有 ${fresh.length} 個生詞）`)),
-    el("div", { class: "lesson-words" },
-      first.map(({ w, n, line }) => wordButton("lesson-word", w, `×${n}`, (b) => openWord(w, b, doc, line)))),
+    el("div", { class: "lesson-words" }, first.map(button)),
+    more,
     el("p", { class: "hint" }, "依「在你所有歌裡最常出現」排序，學了最划算。點詞看讀音和意思；查過的次數會記下來，常查的就是還沒記住的。"));
   card.addEventListener("toggle", () => { prefs.lessonOpen = card.open; savePrefs(); });
   return card;
