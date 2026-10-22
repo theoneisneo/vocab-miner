@@ -52,8 +52,8 @@
 
   <!-- no accept filter: Android often labels downloaded .json/.txt files with an unknown type and greys them out;
        the content is checked after picking instead -->
-  <input id="file" type="file" hidden>
-  <input id="known-file" type="file" hidden>
+  <input id="file" type="file" accept="application/json,.json" hidden>
+  <input id="known-file" type="file" accept="text/plain,.txt" hidden>
   <input id="media-file" type="file" accept="audio/*,video/*" hidden>
   <div id="dialog" class="dialog" hidden role="dialog" aria-modal="true"></div>
   <div id="toast" class="toast" hidden></div>
