@@ -213,7 +213,7 @@ def web(
                 d["titleRomaji"] = romanizer.romanize_tokens(toks)
     if wcfg.get("links") or wcfg.get("search_links"):    # buttons to other places: a table and/or search links
         from .links import add_links, read_links
-        table = read_links(cfg.resolve(wcfg["links"])) if wcfg.get("links") else {}
+        table = read_links(cfg.resolve(wcfg["links"]), aliases) if wcfg.get("links") else {}
         exact = add_links(data["docs"], table, wcfg.get("search_links"), wcfg.get("artist", ""), aliases)
         typer.echo(f"links: {exact} songs from the table"
                    + (f", search links for the rest ({', '.join(wcfg['search_links'])})" if wcfg.get("search_links") else ""))

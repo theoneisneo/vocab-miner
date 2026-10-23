@@ -18,8 +18,8 @@ from pathlib import Path
 from .albums import title_key
 
 
-def read_links(path: Path) -> dict[str, dict[str, str]]:
-    """{title key: {label: url}} from the table."""
+def read_links(path: Path, aliases: Mapping[str, str] | None = None) -> dict[str, dict[str, str]]:
+    """{title key: {label: url}} from the table (titles written differently mapped by `aliases`)."""
     rows = list(csv.reader(path.read_text(encoding="utf-8-sig").splitlines(), delimiter="\t"))
     if not rows:
         return {}
@@ -30,7 +30,7 @@ def read_links(path: Path) -> dict[str, dict[str, str]]:
             continue
         links = {lab: url.strip() for lab, url in zip(labels, r[1:], strict=False) if lab and url.strip()}
         if links:
-            out[title_key(r[0])] = links
+            out[title_key(r[0], aliases)] = links
     return out
 
 
