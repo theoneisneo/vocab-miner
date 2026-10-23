@@ -282,8 +282,10 @@ function renderDataset(id, ds) {
       el("button", { class: "icon-btn small", "aria-label": `移除 ${ds.title || id}`, onclick: () => removeDataset(id) }, "✕")),
     el("div", { class: "section-title" },
       `已學會 ${content.filter(isKnown).length} / ${content.length} 個詞 · 產生於 ${(ds.generated || "").slice(0, 10)}`),
-    el("div", { class: "tabs", role: "tablist" }, tab("all", "全部"), tab("fav", `★ 最愛${favCount ? ` ${favCount}` : ""}`)),
-    v.tab === "fav" ? renderFavorites(id, ds) : renderAll(id, ds, v));
+    el("div", { class: "tabs", role: "tablist" }, tab("all", "全部"), tab("fav", `★ 最愛${favCount ? ` ${favCount}` : ""}`),
+      isJapanese(ds) ? tab("kana", "五十音") : null),
+    v.tab === "fav" ? renderFavorites(id, ds)
+      : v.tab === "kana" && isJapanese(ds) ? renderKana(ds) : renderAll(id, ds, v));
 }
 
 /** Album groups: each doc under the first album that lists it; the rest under "其他". */
@@ -399,6 +401,86 @@ function songRow(id, ds, d, controls = null) {
       "aria-label": fav ? `從最愛移除 ${d.title}` : `加入最愛 ${d.title}`,
       onclick: async () => { await toggleFav(id, d.id); renderHome(); } }, fav ? "★" : "☆"),
     controls);
+}
+
+// ---------- 五十音: plain kana with how often each occurs in this data file; tap to hear it ----------
+const isJapanese = (ds) => (ds.lang || "").split("-")[0] === "ja";
+const KANA_ROWS = [["あ行", "あいうえお", "a i u e o"], ["か行", "かきくけこ", "ka ki ku ke ko"],
+  ["さ行", "さしすせそ", "sa shi su se so"], ["た行", "たちつてと", "ta chi tsu te to"],
+  ["な行", "なにぬねの", "na ni nu ne no"], ["は行", "はひふへほ", "ha hi fu he ho"],
+  ["ま行", "まみむめも", "ma mi mu me mo"], ["や行", "や ゆ よ", "ya - yu - yo"],
+  ["ら行", "らりるれろ", "ra ri ru re ro"], ["わ行", "わ   を", "wa - - - wo"], ["ん", "ん    ", "n - - - -"]];
+const SMALL_KANA = new Set("ぁぃぅぇぉっゃゅょゎゕゖ");
+
+/** Counts over the readings of every line (kanji by ruby, kana as written); katakana counted as hiragana. */
+function kanaCounts(ds) {
+  const plain = new Map();
+  const kinds = { plain: 0, dakuten: 0, handakuten: 0, small: 0, long: 0 };
+  for (const doc of ds.docs) for (const line of doc.lines) for (const sg of line.seg) {
+    for (const ch of (sg[1] || sg[0])) {
+      if (ch === "ー") { kinds.long++; continue; }
+      const code = ch.codePointAt(0);
+      const h = code >= 0x30a1 && code <= 0x30f6 ? String.fromCodePoint(code - 0x60) : ch;
+      const hc = h.codePointAt(0);
+      if (hc < 0x3041 || hc > 0x3096) continue;
+      const base = h.normalize("NFD");
+      if (SMALL_KANA.has(h)) kinds.small++;
+      else if (base.includes("゙")) kinds.dakuten++;
+      else if (base.includes("゚")) kinds.handakuten++;
+      else { kinds.plain++; plain.set(h, (plain.get(h) || 0) + 1); }
+    }
+  }
+  return { plain, kinds, total: Object.values(kinds).reduce((a, b) => a + b, 0) || 1 };
+}
+
+/** Say one kana. Katakana goes to the voice so は / へ are not read as the particles wa / e. */
+function sayKana(h) {
+  if (!("speechSynthesis" in window)) return toast("這個瀏覽器不支援語音");
+  const voices = speechSynthesis.getVoices();
+  const voice = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("ja"));
+  if (voices.length && !voice) toast("這台裝置沒有日文語音：到系統設定的「文字轉語音」下載日文語音");
+  const u = new SpeechSynthesisUtterance(String.fromCodePoint(h.codePointAt(0) + 0x60));
+  u.lang = "ja-JP";
+  if (voice) u.voice = voice;
+  u.rate = 0.8;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+function renderKana(ds) {
+  const { plain, kinds, total } = kanaCounts(ds);
+  const digits = Math.max(...plain.values(), 0).toLocaleString("en-US").length;
+  const pct = (n) => `${(n / total * 100).toFixed(2)}%`.padStart(6, " ");      // figure space keeps width
+  const cnt = (n) => n.toLocaleString("en-US").padStart(digits, " ");
+  const grid = el("div", { class: "kana-grid" },
+    el("div", {}), ["あ段", "い段", "う段", "え段", "お段"].map((c) => el("div", { class: "kana-col" }, c)));
+  for (const [label, kana, roma] of KANA_ROWS) {
+    const romas = roma.split(" ");
+    grid.append(el("div", { class: "kana-row" }, label));
+    [...kana].forEach((h, c) => {
+      if (h === " ") { grid.append(el("div", { class: "kana-cell empty" })); return; }
+      const n = plain.get(h) || 0;
+      const cell = el("button", { class: "kana-cell", "aria-label": `${h} ${romas[c]}，出現 ${n} 次，點一下發音` },
+        el("span", { class: "kana-h" }, h, el("span", { class: "kana-k" }, String.fromCodePoint(h.codePointAt(0) + 0x60))),
+        el("span", { class: "kana-r" }, romas[c]),
+        el("span", { class: "kana-n" }, pct(n)),
+        el("span", { class: "kana-n" }, `${cnt(n)}次`));
+      cell.addEventListener("click", () => {
+        sayKana(h);
+        cell.classList.remove("ping");
+        void cell.offsetWidth;                      // restart the highlight animation
+        cell.classList.add("ping");
+      });
+      grid.append(cell);
+    });
+  }
+  const share = (k) => (kinds[k] / total * 100).toFixed(2);
+  return [
+    el("p", { class: "hint" }, `點假名聽發音。數字是這份資料的歌詞讀音裡，每個音出現的頻率和次數（平假名、片假名合併，共 ${total.toLocaleString("en-US")} 個假名）。`),
+    grid,
+    el("p", { class: "hint kana-foot" }, `清音 ${share("plain")}%・濁音 ${share("dakuten")}%・小字（拗音、促音）${share("small")}%・`
+      + `長音 ${share("long")}%・半濁音 ${share("handakuten")}%`),
+  ];
 }
 
 // ---------- favourites: your own order with named separators ----------
