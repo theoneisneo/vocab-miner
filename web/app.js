@@ -372,9 +372,12 @@ function altTitles(d) {
 function renderVersions(doc) {
   const alts = Array.isArray(doc.alt) ? doc.alt : [];
   const reading = titleReading(doc);
-  if (!alts.length && !(doc.labels || []).length && !reading) return null;
+  const links = (Array.isArray(doc.links) ? doc.links : []).filter((l) => /^https?:\/\//.test(l.url || ""));
+  if (!alts.length && !(doc.labels || []).length && !reading && !links.length) return null;
   return el("div", { class: "versions" },
     reading ? el("div", { class: "title-reading" }, reading) : null,
+    links.map((l) => el("a", { class: "chip small-chip song-link", href: l.url, target: "_blank", rel: "noopener" },
+      `${l.label || "連結"} ↗`)),
     (doc.labels || []).map((l) => el("span", { class: "song-label" }, l)),
     alts.map((a) => {
       const hit = findVersion(a);

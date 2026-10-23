@@ -293,6 +293,16 @@ ja	en
 `[web] versions = "data/song_pairs.tsv"` 讓網頁顯示另一語言的歌名、可以在兩個版本之間切換；在翻唱版那邊再加
 `[web] album_lang = "ja"`，就會照原曲的專輯分組和排序（兩份資料順序相同），翻唱版自己的專輯改成歌名旁的小標籤。歌名寫法不同對不上時，用 `[web] title_aliases = { "清單上的歌名" = "資料裡的歌名" }`。
 
+**連結到串流平台**：每首歌可以有幾個連結按鈕（例如 Spotify）。搜尋連結可以全部自動產生；想要直接開到某首歌，
+就在連結表填上那首歌的分享連結（表頭第一欄是歌名，其他欄是按鈕名稱）：
+
+```toml
+[web]
+artist = "歌手名"
+links = "data/song_links.tsv"
+search_links = { Spotify = "https://open.spotify.com/search/{artist}%20{title}" }
+```
+
 ## 13. 沒有時間軸：用 Whisper 產生
 
 需要 `uv sync --extra whisper`（faster-whisper；有 NVIDIA 顯示卡時會用 GPU，第一次會下載約 1.2 GB 的 CUDA 套件和約 3 GB 的模型）。

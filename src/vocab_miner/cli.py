@@ -211,6 +211,12 @@ def web(
                 d["titleReading"] = reading
             if romanizer and getattr(romanizer, "romanize_tokens", None):
                 d["titleRomaji"] = romanizer.romanize_tokens(toks)
+    if wcfg.get("links") or wcfg.get("search_links"):    # buttons to other places: a table and/or search links
+        from .links import add_links, read_links
+        table = read_links(cfg.resolve(wcfg["links"])) if wcfg.get("links") else {}
+        exact = add_links(data["docs"], table, wcfg.get("search_links"), wcfg.get("artist", ""), aliases)
+        typer.echo(f"links: {exact} songs from the table"
+                   + (f", search links for the rest ({', '.join(wcfg['search_links'])})" if wcfg.get("search_links") else ""))
     versions = []
     if wcfg.get("versions"):             # the same songs in other languages: [web] versions = "data/song_pairs.tsv"
         from .albums import add_versions, read_versions
