@@ -388,12 +388,16 @@ function appButton(url) {
     const u = new URL(url);
     const app = APPS[u.host];
     if (!app) return null;
+    const uri = app.uri(u);                         // e.g. spotify:track:ID
+    if (!uri) return null;
     if (/Android/i.test(navigator.userAgent)) {
-      return { label: app.button, url: `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;`
-        + `package=${app.package};S.browser_fallback_url=${encodeURIComponent(url)};end` };
+      // intent:track:ID#Intent;scheme=spotify;... = spotify:track:ID for that package; a browser cannot open it
+      // itself (unlike an https:// intent, which Edge keeps as a web page); falls back to the web page
+      const [scheme, ...rest] = uri.split(":");
+      return { label: app.button, url: `intent:${rest.join(":")}#Intent;scheme=${scheme};package=${app.package};`
+        + `S.browser_fallback_url=${encodeURIComponent(url)};end` };
     }
-    const uri = app.uri(u);
-    return uri ? { label: app.button, url: uri } : null;
+    return { label: app.button, url: uri };
   } catch {
     return null;
   }
@@ -406,17 +410,18 @@ function renderVersions(doc) {
   if (!alts.length && !(doc.labels || []).length && !reading && !links.length) return null;
   return el("div", { class: "versions" },
     reading ? el("div", { class: "title-reading" }, reading) : null,
+    (doc.labels || []).length
+      ? el("div", { class: "song-labels" }, doc.labels.map((l) => el("span", { class: "song-label" }, l))) : null,
     links.flatMap((l) => {
       const app = appButton(l.url);
       return [
-        // the web page (e.g. Spotify's web player); text: the label from the data file + " ↗"
+        // the web page (e.g. Spotify's web player); text: the label from the data file + " web"
         el("a", { class: "chip small-chip song-link", href: l.url, target: "_blank", rel: "noopener" },
-          `${l.label || "連結"} ↗`),
+          `${l.label || "連結"} web`),
         // open in the installed app (see APPS above for the text)
         app ? el("a", { class: "chip small-chip song-link", href: app.url }, app.label) : null,
       ];
     }),
-    (doc.labels || []).map((l) => el("span", { class: "song-label" }, l)),
     alts.map((a) => {
       const hit = findVersion(a);
       const name = LANG_NAMES[(a.lang || "").split("-")[0]] || a.lang;
