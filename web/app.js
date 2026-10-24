@@ -382,24 +382,6 @@ const APPS = {
   },
 };
 
-/** Try the app; if this page is still showing a moment later (no app took the link), open the web page in a
- *  new tab, as the web button does. */
-function openApp(ev, app) {
-  ev.preventDefault();
-  let left = false;
-  const away = () => { left = true; };
-  document.addEventListener("visibilitychange", away, { once: true });
-  window.addEventListener("pagehide", away, { once: true });
-  window.addEventListener("blur", away, { once: true });
-  location.href = app.url;
-  setTimeout(() => {
-    document.removeEventListener("visibilitychange", away);
-    window.removeEventListener("pagehide", away);
-    window.removeEventListener("blur", away);
-    if (!left && document.visibilityState === "visible") window.open(app.web, "_blank", "noopener");
-  }, 1500);
-}
-
 /** {label, url, web} of the "open in the app" button for a web link, or null when there is no app for it. */
 function appButton(url) {
   try {
@@ -411,7 +393,7 @@ function appButton(url) {
     if (/Android/i.test(navigator.userAgent)) {
       // intent:track:ID#Intent;scheme=spotify;end = spotify:track:ID; a browser cannot open it itself (unlike an
       // https:// intent, which Edge keeps as a web page). No package / fallback in it: when no app takes it,
-      // nothing happens and openApp opens the web page in a new tab instead of replacing this page
+      // nothing happens
       const [scheme, ...rest] = uri.split(":");
       return { label: app.button, url: `intent:${rest.join(":")}#Intent;scheme=${scheme};end`, web: url };
     }
@@ -437,8 +419,7 @@ function renderVersions(doc) {
         el("a", { class: "chip small-chip song-link", href: l.url, target: "_blank", rel: "noopener" },
           `${l.label || "連結"} web`),
         // open in the installed app (see APPS above for the text)
-        app ? el("a", { class: "chip small-chip song-link", href: app.url, onclick: (ev) => openApp(ev, app) }, app.label)
-          : null,
+        app ? el("a", { class: "chip small-chip song-link", href: app.url }, app.label) : null,
       ];
     }),
     alts.map((a) => {
