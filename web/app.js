@@ -369,6 +369,22 @@ function altTitles(d) {
   }).join(" · ");
 }
 
+// Android browsers often keep a link in the browser instead of handing it to the installed app; an intent://
+// link names the app and falls back to the web page when the app is not installed. Other systems: unchanged.
+const APP_PACKAGES = { "open.spotify.com": "com.spotify.music" };
+function appLink(url) {
+  if (!/Android/i.test(navigator.userAgent)) return url;
+  try {
+    const u = new URL(url);
+    const pkg = APP_PACKAGES[u.host];
+    if (!pkg) return url;
+    return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;package=${pkg};`
+      + `S.browser_fallback_url=${encodeURIComponent(url)};end`;
+  } catch {
+    return url;
+  }
+}
+
 function renderVersions(doc) {
   const alts = Array.isArray(doc.alt) ? doc.alt : [];
   const reading = titleReading(doc);
@@ -376,7 +392,7 @@ function renderVersions(doc) {
   if (!alts.length && !(doc.labels || []).length && !reading && !links.length) return null;
   return el("div", { class: "versions" },
     reading ? el("div", { class: "title-reading" }, reading) : null,
-    links.map((l) => el("a", { class: "chip small-chip song-link", href: l.url, target: "_blank", rel: "noopener" },
+    links.map((l) => el("a", { class: "chip small-chip song-link", href: appLink(l.url), target: "_blank", rel: "noopener" },
       `${l.label || "連結"} ↗`)),
     (doc.labels || []).map((l) => el("span", { class: "song-label" }, l)),
     alts.map((a) => {
