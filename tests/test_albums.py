@@ -58,9 +58,10 @@ def test_versions_and_albums_of_another_language(tmp_path):
 
 
 def test_setlist_keeps_order_sections_and_matches_versions(tmp_path):
-    from vocab_miner.albums import apply_setlist, read_setlist
-    (tmp_path / "set.txt").write_text("# comment\n## Main\n夜のバス\nNew Song\n朝の雨\n## Encore\n夜のバス\n古い歌\n",
-                                      encoding="utf-8")
+    from vocab_miner.albums import apply_setlist, read_setlist, read_setlist_links
+    (tmp_path / "set.txt").write_text("# comment\n@ My Playlist https://example.com/p/1\n## Main\n夜のバス\nNew Song\n"
+                                      "朝の雨\n## Encore\n夜のバス\n古い歌\n", encoding="utf-8")
+    assert read_setlist_links(tmp_path / "set.txt") == [{"label": "My Playlist", "url": "https://example.com/p/1"}]
     sections = read_setlist(tmp_path / "set.txt")
     assert sections == [("Main", ["夜のバス", "New Song", "朝の雨"]), ("Encore", ["夜のバス", "古い歌"])]
     data = {"docs": [{"id": "e/1", "title": "Morning Rain", "alt": [{"lang": "ja", "title": "朝の雨"}]},

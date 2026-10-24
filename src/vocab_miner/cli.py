@@ -247,8 +247,10 @@ def web(
         typer.echo("albums: " + ", ".join(f"{a['title']} ({len(a['docs'])})" for a in data["albums"])
                    + (f"; not in an album: {', '.join(other)}" if other else ""))
     if setlist:                          # a concert setlist: only these songs, in this order, in sections
-        from .albums import apply_setlist, read_setlist
+        from .albums import apply_setlist, read_setlist, read_setlist_links
         missing = apply_setlist(data, read_setlist(setlist), aliases)
+        if set_links := read_setlist_links(setlist):
+            data["links"] = set_links
         typer.echo(f"setlist: {len(data['docs'])} songs in " + ", ".join(
             f"{a['title']} ({len(a['docs'])})" for a in data["albums"])
             + (f"; not in the data: {', '.join(missing)}" if missing else ""))

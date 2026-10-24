@@ -202,6 +202,7 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .dataset + .dataset { margin-top: 28px; }
 .dataset-head { display: flex; align-items: center; justify-content: space-between; margin: 8px 4px 0; }
 .dataset-head h2 { margin: 0; font-size: 18px; }
+.dataset-links { margin: 6px 4px 0; }
 .icon-btn.small { font-size: 16px; min-width: 32px; min-height: 32px; color: var(--muted); }
 .hint { font-size: 13px; color: var(--muted); }
 .home-actions .hint { margin-top: 8px; }

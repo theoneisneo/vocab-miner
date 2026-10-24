@@ -117,17 +117,28 @@ def albums_in(docs: Sequence[dict], playlists: Sequence[Playlist], album_lang: s
 # ---------- a setlist: only these songs, in this order, in sections ----------
 
 def read_setlist(path: Path) -> list[tuple[str, list[str]]]:
-    """[(section name, [title, ...])]; "## name" starts a section, other "#" lines are comments."""
+    """[(section name, [title, ...])]; "## name" starts a section, other "#" lines are comments, "@" lines are
+    links (see read_setlist_links)."""
     sections: list[tuple[str, list[str]]] = []
     for line in path.read_text(encoding="utf-8-sig").splitlines():
         s = line.strip()
         if s.startswith("##"):
             sections.append((s.lstrip("#").strip(), []))
-        elif s and not s.startswith("#"):
+        elif s and not s.startswith(("#", "@")):
             if not sections:
                 sections.append(("", []))
             sections[-1][1].append(s)
     return [(name, titles) for name, titles in sections if titles]
+
+
+def read_setlist_links(path: Path) -> list[dict[str, str]]:
+    """Links for the whole setlist (e.g. a playlist of it): "@ label url" lines -> [{label, url}]."""
+    links = []
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        parts = line.strip().removeprefix("@").rsplit(None, 1) if line.strip().startswith("@") else []
+        if len(parts) == 2 and parts[1].startswith(("http://", "https://")):
+            links.append({"label": parts[0].strip(), "url": parts[1]})
+    return links
 
 
 def apply_setlist(data: dict, sections: Sequence[tuple[str, list[str]]],

@@ -280,6 +280,7 @@ function renderDataset(id, ds) {
     el("div", { class: "dataset-head" },
       el("h2", {}, ds.title || id),
       el("button", { class: "icon-btn small", "aria-label": `移除 ${ds.title || id}`, onclick: () => removeDataset(id) }, "✕")),
+    webLinks(ds.links).length ? el("div", { class: "versions dataset-links" }, linkButtons(webLinks(ds.links))) : null,
     el("div", { class: "section-title" },
       `已學會 ${content.filter(isKnown).length} / ${content.length} 個詞 · 產生於 ${(ds.generated || "").slice(0, 10)}`),
     el("div", { class: "tabs", role: "tablist" }, tab("all", "全部"), tab("fav", `★ 最愛${favCount ? ` ${favCount}` : ""}`),
@@ -403,25 +404,34 @@ function appButton(url) {
   }
 }
 
+/** Valid [{label, url}] links of a doc or a data file. */
+function webLinks(links) {
+  return (Array.isArray(links) ? links : []).filter((l) => /^https?:\/\//.test(l.url || ""));
+}
+
+/** Buttons for links: the web page, and the installed app when there is one (see APPS above). */
+function linkButtons(links) {
+  return links.flatMap((l) => {
+    const app = appButton(l.url);
+    return [
+      // the web page (e.g. Spotify's web player); text: the label from the data file + " web"
+      el("a", { class: "chip small-chip song-link", href: l.url, target: "_blank", rel: "noopener" },
+        `${l.label || "連結"} web`),
+      app ? el("a", { class: "chip small-chip song-link", href: app.url }, app.label) : null,
+    ];
+  });
+}
+
 function renderVersions(doc) {
   const alts = Array.isArray(doc.alt) ? doc.alt : [];
   const reading = titleReading(doc);
-  const links = (Array.isArray(doc.links) ? doc.links : []).filter((l) => /^https?:\/\//.test(l.url || ""));
+  const links = webLinks(doc.links);
   if (!alts.length && !(doc.labels || []).length && !reading && !links.length) return null;
   return el("div", { class: "versions" },
     reading ? el("div", { class: "title-reading" }, reading) : null,
     (doc.labels || []).length
       ? el("div", { class: "song-labels" }, doc.labels.map((l) => el("span", { class: "song-label" }, l))) : null,
-    links.flatMap((l) => {
-      const app = appButton(l.url);
-      return [
-        // the web page (e.g. Spotify's web player); text: the label from the data file + " web"
-        el("a", { class: "chip small-chip song-link", href: l.url, target: "_blank", rel: "noopener" },
-          `${l.label || "連結"} web`),
-        // open in the installed app (see APPS above for the text)
-        app ? el("a", { class: "chip small-chip song-link", href: app.url }, app.label) : null,
-      ];
-    }),
+    linkButtons(links),
     alts.map((a) => {
       const hit = findVersion(a);
       const name = LANG_NAMES[(a.lang || "").split("-")[0]] || a.lang;

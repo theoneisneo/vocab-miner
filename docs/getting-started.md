@@ -300,6 +300,7 @@ uv run vm web --setlist data/setlist.txt --title "演唱會" --file-name concert
 ```
 
 翻唱版的資料（例如英文版）也可以用同一份原曲歌名的歌單：有版本對照表時，會依原曲歌名找到對應的歌。
+歌單裡寫 `@ Spotify https://open.spotify.com/playlist/…` 這樣的行，首頁會多一個打開那份播放清單的按鈕。
 
 **連結到串流平台**：每首歌可以有幾個連結按鈕（例如 Spotify）。搜尋連結可以全部自動產生；想要直接開到某首歌，
 就在連結表填上那首歌的分享連結（表頭第一欄是歌名，其他欄是按鈕名稱）：
