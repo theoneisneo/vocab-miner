@@ -382,7 +382,25 @@ const APPS = {
   },
 };
 
-/** {label, url} of the "open in the app" button for a web link, or null when there is no app for it. */
+/** Try the app; if this page is still showing a moment later (no app took the link), open the web page in a
+ *  new tab, as the web button does. */
+function openApp(ev, app) {
+  ev.preventDefault();
+  let left = false;
+  const away = () => { left = true; };
+  document.addEventListener("visibilitychange", away, { once: true });
+  window.addEventListener("pagehide", away, { once: true });
+  window.addEventListener("blur", away, { once: true });
+  location.href = app.url;
+  setTimeout(() => {
+    document.removeEventListener("visibilitychange", away);
+    window.removeEventListener("pagehide", away);
+    window.removeEventListener("blur", away);
+    if (!left && document.visibilityState === "visible") window.open(app.web, "_blank", "noopener");
+  }, 1500);
+}
+
+/** {label, url, web} of the "open in the app" button for a web link, or null when there is no app for it. */
 function appButton(url) {
   try {
     const u = new URL(url);
@@ -391,13 +409,13 @@ function appButton(url) {
     const uri = app.uri(u);                         // e.g. spotify:track:ID
     if (!uri) return null;
     if (/Android/i.test(navigator.userAgent)) {
-      // intent:track:ID#Intent;scheme=spotify;... = spotify:track:ID for that package; a browser cannot open it
-      // itself (unlike an https:// intent, which Edge keeps as a web page); falls back to the web page
+      // intent:track:ID#Intent;scheme=spotify;end = spotify:track:ID; a browser cannot open it itself (unlike an
+      // https:// intent, which Edge keeps as a web page). No package / fallback in it: when no app takes it,
+      // nothing happens and openApp opens the web page in a new tab instead of replacing this page
       const [scheme, ...rest] = uri.split(":");
-      return { label: app.button, url: `intent:${rest.join(":")}#Intent;scheme=${scheme};package=${app.package};`
-        + `S.browser_fallback_url=${encodeURIComponent(url)};end` };
+      return { label: app.button, url: `intent:${rest.join(":")}#Intent;scheme=${scheme};end`, web: url };
     }
-    return { label: app.button, url: uri };
+    return { label: app.button, url: uri, web: url };
   } catch {
     return null;
   }
@@ -419,7 +437,8 @@ function renderVersions(doc) {
         el("a", { class: "chip small-chip song-link", href: l.url, target: "_blank", rel: "noopener" },
           `${l.label || "連結"} web`),
         // open in the installed app (see APPS above for the text)
-        app ? el("a", { class: "chip small-chip song-link", href: app.url }, app.label) : null,
+        app ? el("a", { class: "chip small-chip song-link", href: app.url, onclick: (ev) => openApp(ev, app) }, app.label)
+          : null,
       ];
     }),
     alts.map((a) => {
