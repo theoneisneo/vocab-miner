@@ -369,19 +369,33 @@ function altTitles(d) {
   }).join(" · ");
 }
 
-// Android browsers often keep a link in the browser instead of handing it to the installed app; an intent://
-// link names the app and falls back to the web page when the app is not installed. Other systems: unchanged.
-const APP_PACKAGES = { "open.spotify.com": "com.spotify.music" };
-function appLink(url) {
-  if (!/Android/i.test(navigator.userAgent)) return url;
+// Web links that also have an app: the button text, the Android package (intent:// link that falls back to the
+// web page when the app is not installed) and the app's own URI scheme for other systems (spotify:track:ID).
+const APPS = {
+  "open.spotify.com": {
+    button: "Spotify app",                          // text of the "open in the app" button
+    package: "com.spotify.music",
+    uri: (u) => {                                   // /track/ID -> spotify:track:ID, /search/q -> spotify:search:q
+      const [kind, ...rest] = u.pathname.split("/").filter(Boolean);
+      return kind && rest.length ? `spotify:${kind}:${rest.join("/")}` : null;
+    },
+  },
+};
+
+/** {label, url} of the "open in the app" button for a web link, or null when there is no app for it. */
+function appButton(url) {
   try {
     const u = new URL(url);
-    const pkg = APP_PACKAGES[u.host];
-    if (!pkg) return url;
-    return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;package=${pkg};`
-      + `S.browser_fallback_url=${encodeURIComponent(url)};end`;
+    const app = APPS[u.host];
+    if (!app) return null;
+    if (/Android/i.test(navigator.userAgent)) {
+      return { label: app.button, url: `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;`
+        + `package=${app.package};S.browser_fallback_url=${encodeURIComponent(url)};end` };
+    }
+    const uri = app.uri(u);
+    return uri ? { label: app.button, url: uri } : null;
   } catch {
-    return url;
+    return null;
   }
 }
 
@@ -392,8 +406,16 @@ function renderVersions(doc) {
   if (!alts.length && !(doc.labels || []).length && !reading && !links.length) return null;
   return el("div", { class: "versions" },
     reading ? el("div", { class: "title-reading" }, reading) : null,
-    links.map((l) => el("a", { class: "chip small-chip song-link", href: appLink(l.url), target: "_blank", rel: "noopener" },
-      `${l.label || "連結"} ↗`)),
+    links.flatMap((l) => {
+      const app = appButton(l.url);
+      return [
+        // the web page (e.g. Spotify's web player); text: the label from the data file + " ↗"
+        el("a", { class: "chip small-chip song-link", href: l.url, target: "_blank", rel: "noopener" },
+          `${l.label || "連結"} ↗`),
+        // open in the installed app (see APPS above for the text)
+        app ? el("a", { class: "chip small-chip song-link", href: app.url }, app.label) : null,
+      ];
+    }),
     (doc.labels || []).map((l) => el("span", { class: "song-label" }, l)),
     alts.map((a) => {
       const hit = findVersion(a);
