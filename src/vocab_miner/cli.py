@@ -170,6 +170,9 @@ def web(
     source: Annotated[list[str] | None, typer.Option("--source", "-s", help="Only these source ids.")] = None,
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Output path.")] = None,
     title: Annotated[str | None, typer.Option(help="Name shown in the app (default from [web] title).")] = None,
+    setlist: Annotated[Path | None, typer.Option(
+        help="Only the songs in this file, in its order ('## name' starts a section, e.g. an encore).")] = None,
+    file_name: Annotated[str | None, typer.Option(help="Name of the copies in [web] copy_to.")] = None,
     root: RootOpt = None,
 ):
     """Write the data file for the sing-along web app (out/web/songs.json). Import it in the app on your phone."""
@@ -243,9 +246,15 @@ def web(
         other = [d["title"] for d in data["docs"] if d["id"] not in placed]
         typer.echo("albums: " + ", ".join(f"{a['title']} ({len(a['docs'])})" for a in data["albums"])
                    + (f"; not in an album: {', '.join(other)}" if other else ""))
-    path = out or cfg.out_dir / "web" / "songs.json"
+    if setlist:                          # a concert setlist: only these songs, in this order, in sections
+        from .albums import apply_setlist, read_setlist
+        missing = apply_setlist(data, read_setlist(setlist), aliases)
+        typer.echo(f"setlist: {len(data['docs'])} songs in " + ", ".join(
+            f"{a['title']} ({len(a['docs'])})" for a in data["albums"])
+            + (f"; not in the data: {', '.join(missing)}" if missing else ""))
+    path = out or cfg.out_dir / "web" / ("setlist.json" if setlist else "songs.json")
     write_web_data(data, path)
-    typer.echo(f"{len(data['docs'])} docs, {len(utts)} lines, {len(data['words'])} words -> {path} "
+    typer.echo(f"{len(data['docs'])} docs, {sum(len(d['lines']) for d in data['docs'])} lines, {len(data['words'])} words -> {path} "
                f"({path.stat().st_size // 1024} KB)")
     # extra copies, e.g. a synced cloud folder the phone can open: [web] copy_to = ["..."], file_name = "..."
     import shutil
@@ -254,8 +263,9 @@ def web(
         if not dest.is_dir():
             typer.secho(f"copy_to folder not found, skipped: {dest}", fg="yellow")
             continue
-        shutil.copyfile(path, dest / wcfg.get("file_name", path.name))
-        typer.echo(f"  copied -> {dest / wcfg.get('file_name', path.name)}")
+        name = file_name or (path.name if setlist else wcfg.get("file_name", path.name))
+        shutil.copyfile(path, dest / name)
+        typer.echo(f"  copied -> {dest / name}")
 
 
 @app.command()

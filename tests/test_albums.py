@@ -55,3 +55,20 @@ def test_versions_and_albums_of_another_language(tmp_path):
     assert docs[0]["alt"] == [{"lang": "ja", "title": "朝の雨"}] and "alt" not in docs[2]
     albums = albums_in(docs, playlists, "ja", "en", tmp_path, versions)
     assert albums == [{"id": "一枚目", "title": "一枚目", "docs": ["e/2", "e/1"]}]     # the Japanese album's order
+
+
+def test_setlist_keeps_order_sections_and_matches_versions(tmp_path):
+    from vocab_miner.albums import apply_setlist, read_setlist
+    (tmp_path / "set.txt").write_text("# comment\n## Main\n夜のバス\nNew Song\n朝の雨\n## Encore\n夜のバス\n古い歌\n",
+                                      encoding="utf-8")
+    sections = read_setlist(tmp_path / "set.txt")
+    assert sections == [("Main", ["夜のバス", "New Song", "朝の雨"]), ("Encore", ["夜のバス", "古い歌"])]
+    data = {"docs": [{"id": "e/1", "title": "Morning Rain", "alt": [{"lang": "ja", "title": "朝の雨"}]},
+                     {"id": "e/2", "title": "Night Bus", "alt": [{"lang": "ja", "title": "夜のバス"}]},
+                     {"id": "e/3", "title": "Old Song", "alt": [{"lang": "ja", "title": "古い歌"}]},
+                     {"id": "e/4", "title": "Not Played"}]}
+    missing = apply_setlist(data, sections)
+    assert missing == ["New Song"]
+    assert [d["id"] for d in data["docs"]] == ["e/2", "e/1", "e/3"]          # played twice: first place only
+    assert data["albums"] == [{"id": "set-1", "title": "Main", "docs": ["e/2", "e/1"]},
+                              {"id": "set-2", "title": "Encore", "docs": ["e/3"]}]

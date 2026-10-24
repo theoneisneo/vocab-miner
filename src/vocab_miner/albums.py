@@ -112,3 +112,45 @@ def albums_in(docs: Sequence[dict], playlists: Sequence[Playlist], album_lang: s
         if title:
             proxies.append({"id": d["id"], "title": title, "media": None})
     return build_albums(playlists, album_lang, list_dir, proxies, aliases)
+
+
+# ---------- a setlist: only these songs, in this order, in sections ----------
+
+def read_setlist(path: Path) -> list[tuple[str, list[str]]]:
+    """[(section name, [title, ...])]; "## name" starts a section, other "#" lines are comments."""
+    sections: list[tuple[str, list[str]]] = []
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        s = line.strip()
+        if s.startswith("##"):
+            sections.append((s.lstrip("#").strip(), []))
+        elif s and not s.startswith("#"):
+            if not sections:
+                sections.append(("", []))
+            sections[-1][1].append(s)
+    return [(name, titles) for name, titles in sections if titles]
+
+
+def apply_setlist(data: dict, sections: Sequence[tuple[str, list[str]]],
+                  aliases: Mapping[str, str] | None = None) -> list[str]:
+    """Keep only the setlist's songs in its order, one album per section. A song matches by its title or the
+    title of one of its versions (doc["alt"]), so a translated set can use the original titles. A song played
+    twice stays in its first place. Returns the setlist titles that matched no song."""
+    by_key: dict[str, dict] = {}
+    for d in data["docs"]:
+        for t in [d["title"], *(a["title"] for a in d.get("alt", []))]:
+            by_key.setdefault(title_key(t, aliases), d)
+    kept, missing, albums = [], [], []
+    for n, (name, titles) in enumerate(sections, 1):
+        members = []
+        for t in titles:
+            d = by_key.get(title_key(t, aliases))
+            if d is None:
+                if t not in missing:
+                    missing.append(t)
+            elif d["id"] not in {k["id"] for k in kept}:
+                kept.append(d)
+                members.append(d["id"])
+        albums.append({"id": f"set-{n}", "title": name or "setlist", "docs": members})
+    data["docs"] = kept
+    data["albums"] = [a for a in albums if a["docs"]]
+    return missing
