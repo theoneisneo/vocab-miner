@@ -660,7 +660,8 @@ async function renderDoc(dsId, ds, doc) {
       if (onToggle) onToggle();
     },
   }, label);
-  const rateBtn = el("button", { class: "chip rate-chip", "aria-label": "播放速度：左右滑動調整，點一下切換" },
+  const rateBtn = el("button", { class: "chip rate-chip", "aria-label": "播放速度：左右滑動調整，點一下切換",
+    title: "點左右兩端（‹ ›）調整速度，點中間切換" },
     `‹ ${prefs.rate}× ›`);
   const applyRate = (r) => {
     prefs.rate = r;
@@ -1168,7 +1169,8 @@ function stepRate(current, dir) {
   return r;
 }
 
-/** Horizontal swipe calls onSwipe(+1 / -1); a tap (or Enter/Space) calls onTap; arrow keys call onSwipe. */
+/** Horizontal swipe calls onSwipe(+1 / -1); a tap (or Enter/Space) calls onTap; arrow keys call onSwipe. With a
+ * mouse, a click on the left / right end also calls onSwipe. */
 function swipeable(node, onSwipe, onTap) {
   let x0 = null;
   node.addEventListener("pointerdown", (ev) => { x0 = ev.clientX; node.setPointerCapture?.(ev.pointerId); });
@@ -1176,7 +1178,14 @@ function swipeable(node, onSwipe, onTap) {
     if (x0 === null) return;
     const dx = ev.clientX - x0;
     x0 = null;
-    if (Math.abs(dx) >= 24) onSwipe(dx > 0 ? 1 : -1); else onTap();
+    if (Math.abs(dx) >= 24) return onSwipe(dx > 0 ? 1 : -1);
+    if (ev.pointerType === "mouse") {           // nobody drags with a mouse: clicking the ‹ / › ends steps instead
+      const r = node.getBoundingClientRect();
+      const at = (ev.clientX - r.left) / r.width;
+      if (at < 0.35) return onSwipe(-1);
+      if (at > 0.65) return onSwipe(1);
+    }
+    onTap();
   });
   node.addEventListener("pointercancel", () => { x0 = null; });
   node.addEventListener("click", (ev) => { if (ev.detail === 0) onTap(); });   // keyboard activation
