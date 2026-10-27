@@ -135,6 +135,12 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .ask-btn { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px;
   font-size: 13px; padding: 5px 12px; min-height: 30px; cursor: pointer; }
 .ask-btn:active { background: var(--accent-soft); color: var(--accent); }
+.bm-btn { border: 0; background: none; font-size: 16px; padding: 2px 6px; min-height: 30px; cursor: pointer;
+  opacity: 0.3; filter: grayscale(1); }
+.bm-btn[aria-pressed="true"] { opacity: 1; filter: none; }
+.line.bookmarked { box-shadow: inset -4px 0 0 var(--accent); }
+.line.current.bookmarked { box-shadow: inset 4px 0 0 var(--accent), inset -4px 0 0 var(--accent); }
+.loop-on .bm-btn, .loop-on .bm-go { display: none; }
 .line-ex { display: none; margin-top: 4px; font-size: 14px; }
 .show-ex .line-ex { display: block; }
 .line-ex summary { color: var(--accent); cursor: pointer; font-size: 13px; }

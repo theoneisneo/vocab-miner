@@ -638,6 +638,7 @@ async function renderDoc(dsId, ds, doc) {
   favBtn.onclick = async () => { await toggleFav(dsId, doc.id); showFav(); toast(isFav(dsId, doc.id) ? "已加入最愛" : "已從最愛移除"); };
   showFav();
   view.replaceChildren();
+  bookmarkKey = `${dsId}/${doc.id}`;
   const root = el("div", { class: "doc" });
   applyPrefClasses(root);
 
@@ -688,8 +689,11 @@ async function renderDoc(dsId, ds, doc) {
       toggle.textContent = label();
       toggle.setAttribute("aria-expanded", String(prefs.showDisplay));
     });
+    const goBookmark = el("button", { class: "chip bm-go", hidden: getBookmark() < 0,
+      onclick: () => { if (getBookmark() >= 0) playLine(doc, getBookmark()); } }, "🔖 回書籤");
     stick.append(el("div", { class: "toolbar play-row" },
-      chip("單句重複", "loop", () => { loopLine = prefs.loop ? currentLine : -1; }), rateBtn, chip("跟隨", "follow"), toggle));
+      chip("單句重複", "loop", () => { loopLine = prefs.loop ? currentLine : -1; }), goBookmark, rateBtn,
+      chip("跟隨", "follow"), toggle));
   }
   stick.append(displayRow);
   stick.append(data.lang === "en"
@@ -721,6 +725,7 @@ async function renderDoc(dsId, ds, doc) {
   if (lesson) root.append(lesson);
   root.append(el("ol", { class: "lines" }, doc.lines.map((line, i) => renderLine(doc, line, i))));
   view.append(root);
+  showBookmark();
 
   if (local) startLocalPlayer(playerBox, local, doc);
   else if (youtube) startYouTube(playerBox, youtube, doc);
@@ -733,6 +738,32 @@ function applyPrefClasses(root) {
   root.classList.toggle("show-gloss", !!prefs.gloss);
   root.classList.toggle("show-struct", !!prefs.struct);
   root.classList.toggle("show-ex", !!prefs.ex);
+  root.classList.toggle("loop-on", !!prefs.loop);      // bookmarks are for practising several lines in a row
+}
+
+// ---------- bookmark: one line per song to start practising from (when 單句重複 is off) ----------
+let bookmarkKey = null;                                 // "<data file>/<doc id>" of the song on screen
+const getBookmark = () => (prefs.bookmarks || {})[bookmarkKey] ?? -1;
+
+/** Put the song's bookmark on line i (moving it from another line), or remove it when it is already there. */
+function toggleBookmark(i) {
+  prefs.bookmarks = prefs.bookmarks || {};
+  const off = getBookmark() === i;
+  if (off) delete prefs.bookmarks[bookmarkKey]; else prefs.bookmarks[bookmarkKey] = i;
+  savePrefs();
+  showBookmark();
+  toast(off ? "已取消書籤" : `書籤設在第 ${i + 1} 句，按「🔖 回書籤」從這句開始播放`);
+}
+
+function showBookmark() {
+  const b = getBookmark();
+  for (const li of document.querySelectorAll(".line")) {
+    const on = Number(li.dataset.i) === b;
+    li.classList.toggle("bookmarked", on);
+    li.querySelector(".bm-btn")?.setAttribute("aria-pressed", String(on));
+  }
+  const go = document.querySelector(".bm-go");
+  if (go) go.hidden = b < 0;
 }
 
 /** Sentence role used for colouring: particles, predicates (verbs/adjectives), auxiliaries (tense, negation...). */
@@ -784,10 +815,14 @@ function renderLine(doc, line, i) {
   ask.addEventListener("click", (ev) => { ev.stopPropagation(); askAI(linePrompt(doc, i)); });
   const ex = line.ex ? el("details", { class: "line-ex" }, el("summary", {}, "解說"), el("p", {}, line.ex)) : null;
   if (ex) ex.addEventListener("click", (ev) => ev.stopPropagation());
+  const timed = line.start !== null && line.start !== undefined;
+  const bm = timed ? el("button", { class: "bm-btn", "aria-pressed": "false", "aria-label": "書籤：從這句開始練習",
+    title: "書籤：從這句開始練習" }, "🔖") : null;
+  if (bm) bm.addEventListener("click", (ev) => { ev.stopPropagation(); toggleBookmark(i); });
   const li = el("li", { class: "line", "data-i": i },
     el("div", { class: "line-side" },
-      line.start !== null && line.start !== undefined ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
-      ask),
+      timed ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
+      ask, bm),
     jp,
     line.romaji ? el("div", { class: "line-romaji" + (wr.length ? " has-wr" : "") }, line.romaji) : null,
     line.tr ? el("div", { class: "line-tr" }, line.tr) : null,
