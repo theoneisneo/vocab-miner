@@ -742,7 +742,22 @@ function applyPrefClasses(root) {
 // ---------- bookmark: one line per song to start practising from (when 單句重複 is off) ----------
 let bookmarkKey = null;                                 // "<data file>/<doc id>" of the song on screen
 let bookmarkDoc = null;
-const getBookmark = () => (prefs.bookmarks || {})[bookmarkKey] ?? -1;
+// prefs.bookmarkAt: {song: start time of the line}, so it stays on the right line when lines are merged or the
+// data file is regenerated (a time inside a merged line finds that line)
+function getBookmark() {
+  const old = (prefs.bookmarks || {})[bookmarkKey];   // first version kept the line number
+  if (old !== undefined && bookmarkDoc) {
+    delete prefs.bookmarks[bookmarkKey];
+    const s = bookmarkDoc.lines[old]?.start;
+    if (s !== null && s !== undefined) (prefs.bookmarkAt = prefs.bookmarkAt || {})[bookmarkKey] = s;
+    savePrefs();
+  }
+  const t = (prefs.bookmarkAt || {})[bookmarkKey];
+  if (t === undefined || !bookmarkDoc) return -1;
+  let found = -1;
+  bookmarkDoc.lines.forEach((l, i) => { if (l.start !== null && l.start !== undefined && l.start <= t + 0.01) found = i; });
+  return found;
+}
 
 /** Play from the bookmarked line: the ↩ on the line being played, or the B key. */
 function backToBookmark() {
@@ -758,9 +773,9 @@ document.addEventListener("keydown", (ev) => {
 
 /** Put the song's bookmark on line i (moving it from another line), or remove it when it is already there. */
 function toggleBookmark(i) {
-  prefs.bookmarks = prefs.bookmarks || {};
+  prefs.bookmarkAt = prefs.bookmarkAt || {};
   const off = getBookmark() === i;
-  if (off) delete prefs.bookmarks[bookmarkKey]; else prefs.bookmarks[bookmarkKey] = i;
+  if (off) delete prefs.bookmarkAt[bookmarkKey]; else prefs.bookmarkAt[bookmarkKey] = bookmarkDoc.lines[i].start;
   savePrefs();
   showBookmark();
   toast(off ? "已取消書籤" : `書籤設在第 ${i + 1} 句：播放中那句的 ↩（或按 B 鍵）會回到這句`);
