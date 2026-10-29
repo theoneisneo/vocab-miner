@@ -120,7 +120,8 @@ class LyricsResult:
 def fetch_lyrics(rows: list[dict], out: Path, lang: str, artist: str | None = None, get: Callable = _get,
                  pause: float = PAUSE, progress: Callable[[int, int, LyricsResult], None] | None = None
                  ) -> list[LyricsResult]:
-    """rows: video list rows (id, title, channel, duration). Videos that already have a file in `out` are skipped."""
+    """rows: video list rows (id, title, channel, duration, and optionally artist, which wins over `artist`).
+    Videos that already have a file in `out` are skipped."""
     out.mkdir(parents=True, exist_ok=True)
     results: list[LyricsResult] = []
     asked = 0
@@ -131,7 +132,7 @@ def fetch_lyrics(rows: list[dict], out: Path, lang: str, artist: str | None = No
         if asked and pause:
             time.sleep(pause)
         asked += 1
-        who = artist or artist_from_channel(row.get("channel") or "")
+        who = row.get("artist") or artist or artist_from_channel(row.get("channel") or "")
         dur = float(row["duration"]) if row.get("duration") else None
         try:
             best = pick(search(title, who, dur, get, pause), title, who, dur, lang)

@@ -9,8 +9,10 @@
 Songs that already have a file in the output folder are skipped, also when the file belongs to another upload of
 the same song (a music video and a music-only track of one song count once). Non-songs in playlists (prologues,
 interludes, crossfade previews, trailers) are left out, and so is anything listed in <out>/skip.txt (one video id
-or title per line, e.g. a version in another language that sits in a playlist). <out>/videos.tsv lists every song
-with a clean title; use it as the subtitle source's `video_list` so each line links to its video.
+or title per line, e.g. a version in another language that sits in a playlist). <out>/titles.tsv gives the title
+(and optionally the artist) of a video when the one worked out from the YouTube title and channel is wrong.
+<out>/videos.tsv lists every song with a clean title; use it as the subtitle source's `video_list` so each line
+links to its video.
 """
 from __future__ import annotations
 
@@ -54,12 +56,28 @@ def read_skip(path: Path) -> set[str]:
     return out
 
 
+def read_titles(path: Path) -> dict[str, dict[str, str]]:
+    """titles.tsv: "video id <tab> title [<tab> artist]" per line, for videos whose YouTube title or channel gives
+    the wrong song or artist; "#" starts a comment. Videos not listed keep the title cleaned from YouTube's."""
+    if not path.is_file():
+        return {}
+    out = {}
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        cols = [c.strip() for c in line.split("#", 1)[0].split("\t")]
+        if len(cols) >= 2 and cols[0] and cols[1]:
+            out[cols[0]] = {"title": cols[1], **({"artist": cols[2]} if len(cols) > 2 and cols[2] else {})}
+    return out
+
+
 def has_file(out: Path, vid: str, suffixes=(*TIMED, ".txt")) -> bool:
     return any((out / f"{vid}{s}").exists() for s in suffixes)
 
 
-def collect(playlists: list[youtube.Playlist], lang: str, list_dir: Path, log: Callable[[str], None]) -> list[dict]:
-    """Song rows of every playlist in `lang`, in order, one per song (by title)."""
+def collect(playlists: list[youtube.Playlist], lang: str, list_dir: Path, log: Callable[[str], None],
+            titles: dict[str, dict[str, str]] | None = None) -> list[dict]:
+    """Song rows of every playlist in `lang`, in order, one per song (by title). `titles` (read_titles) overrides
+    the title and artist of the videos it lists."""
+    titles = titles or {}
     rows, seen = [], set()
     for pl in playlists:
         if pl.lang.split("-")[0] != lang.split("-")[0]:
@@ -70,12 +88,14 @@ def collect(playlists: list[youtube.Playlist], lang: str, list_dir: Path, log: C
             youtube.write_list(path, entries)
             log(f"{pl.album or '-'}: {len(entries)} videos ({title})")
         for r in youtube.read_list(path):
-            key = title_key(r["title"])
-            if NOT_A_SONG.search(r["title"]) or not key or key in seen:
+            given = titles.get(r["id"])
+            key = title_key(given["title"]) if given else title_key(r["title"])
+            if (not given and NOT_A_SONG.search(r["title"])) or not key or key in seen:
                 continue
             seen.add(key)
-            rows.append({"id": r["id"], "title": clean_title(r["title"]), "channel": r.get("channel", ""),
-                         "duration": r.get("duration", "")})
+            rows.append({"id": r["id"], "title": given["title"] if given else clean_title(r["title"]),
+                         "channel": r.get("channel", ""), "duration": r.get("duration", ""),
+                         **({"artist": given["artist"]} if given and given.get("artist") else {})})
     return rows
 
 
@@ -83,7 +103,7 @@ def run(playlists_file: Path, lang: str, out: Path, list_dir: Path, whisper: boo
         model: str = "large-v3", log: Callable[[str], None] = print) -> SongsResult:
     res = SongsResult()
     out.mkdir(parents=True, exist_ok=True)
-    rows = collect(youtube.read_playlists(playlists_file), lang, list_dir, log)
+    rows = collect(youtube.read_playlists(playlists_file), lang, list_dir, log, read_titles(out / "titles.tsv"))
     skip = read_skip(out / "skip.txt")
     rows = [r for r in rows if r["id"] not in skip and title_key(r["title"]) not in skip]
     # a song is done when any upload of it has a file here (earlier runs may have used another video)

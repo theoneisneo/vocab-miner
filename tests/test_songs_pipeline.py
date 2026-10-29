@@ -103,6 +103,22 @@ def test_collect_skips_non_songs_and_duplicates(tmp_path):
     assert [(r["id"], r["title"]) for r in rows] == [("v1", "Morning Fox"), ("t2", "Night Bus")]
 
 
+def test_titles_file_overrides_title_and_artist(tmp_path):
+    pl = tmp_path / "playlists.txt"
+    pl.write_text("en | EP | https://www.youtube.com/playlist?list=PLa\n", encoding="utf-8")
+    youtube.write_list(tmp_path / "PLa.tsv", [
+        {"id": "v1", "title": "Morning Fox / Some Band", "channel": "Label Channel", "duration": ""},
+        {"id": "v2", "title": "Prologue", "channel": "", "duration": ""},
+        {"id": "v3", "title": "Some Band - Night Bus", "channel": "", "duration": ""}])
+    (tmp_path / "titles.tsv").write_text("# id\ttitle\tartist\nv1\tMorning Fox\tSome Band\nv2\tPrologue Song\n"
+                                         "bad line\n", encoding="utf-8")
+    titles = songs.read_titles(tmp_path / "titles.tsv")
+    assert titles == {"v1": {"title": "Morning Fox", "artist": "Some Band"}, "v2": {"title": "Prologue Song"}}
+    rows = songs.collect(youtube.read_playlists(pl), "en", tmp_path, log=lambda m: None, titles=titles)
+    assert [(r["id"], r["title"], r.get("artist")) for r in rows] == [
+        ("v1", "Morning Fox", "Some Band"), ("v2", "Prologue Song", None), ("v3", "Night Bus", None)]
+
+
 def test_read_skip(tmp_path):
     (tmp_path / "skip.txt").write_text("# comment\nv1   # other language\nNight Bus\n\n", encoding="utf-8")
     skip = songs.read_skip(tmp_path / "skip.txt")

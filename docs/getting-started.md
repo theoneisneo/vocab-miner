@@ -356,6 +356,8 @@ uv run vm songs data/playlists.txt --lang en -o data/raw/english
 - 已經有歌詞檔的歌會跳過，同一首歌的不同上傳（MV 和純音樂版）只算一次。
 - Prologue、Interlude、Cross Fade 這類不是歌的影片會略過；播放清單裡混了其他語言的版本，把影片 ID 或歌名寫進
   輸出資料夾的 `skip.txt`（一行一個）。
+- 從影片標題和頻道名推出來的歌名或歌手不對時，寫進輸出資料夾的 `titles.tsv`：一行一部影片，Tab 分隔
+  `影片ID　歌名　歌手`（歌手可省略），沒列的照常推。已經抓過歌詞的歌不會重抓；要重找歌詞，先刪掉那首的 `.lrc` / `.txt`。
 - 輸出資料夾的 `videos.tsv` 是整理過歌名的歌曲清單，設定成 source 的 `video_list`，每句就能連到影片。
 
 **品質報告**：每首歌標成 `ok`（可以直接用）、`check`（建議看一下：AI 轉寫、歌詞在影片結束前很早就停、Whisper 自己
