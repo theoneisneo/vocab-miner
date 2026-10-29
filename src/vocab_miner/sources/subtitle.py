@@ -14,7 +14,8 @@ Translations: bilingual material is supported with the `translations` option (se
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+import shutil
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -80,6 +81,48 @@ def parse_lrc(text: str) -> list[Cue]:
         end = timed[i + 1][0] - offset if i + 1 < len(timed) else None
         cues.append(Cue(max(t - offset, 0.0), end, body))
     return cues
+
+
+def merge_lrc(text: str, groups: Sequence[Sequence[float]], tolerance: float = 0.015) -> tuple[str, int]:
+    """Join the lines at each group's start times (as parse_lrc gives them) into the first one: "text1 text2".
+    When several lines share a time (bilingual .lrc), they are joined position by position. A time that is no
+    longer there (merged before) is skipped; lines with several time stamps (a repeated chorus) are left alone.
+    Returns the new text and the number of groups that changed."""
+    lines = text.split("\n")
+    offset = 0.0
+    entries: list[tuple[float, int, str, str]] = []          # (time, line index, time stamp, body)
+    for idx, raw in enumerate(lines):
+        line = raw.strip()
+        meta = LRC_META.match(line)
+        if meta and not LRC_TIME.match(line):
+            if meta.group(1).lower() == "offset":
+                try:
+                    offset = int(meta.group(2).strip()) / 1000
+                except ValueError:
+                    pass
+            continue
+        stamps = []
+        rest = line
+        while (m := LRC_TIME.match(rest)):
+            stamps.append(_secs(*m.groups()))
+            rest = rest[m.end():]
+        if len(stamps) == 1 and LRC_WORD_TIME.sub("", rest).strip():
+            entries.append((stamps[0], idx, line[:len(line) - len(rest)], rest.strip()))
+
+    def at(t: float) -> list[tuple[float, int, str, str]]:
+        return [e for e in entries if abs(max(e[0] - offset, 0.0) - t) <= tolerance]
+
+    changed, drop = 0, set()
+    for group in groups:
+        first = at(group[0])
+        rest_lines = [found for t in group[1:] if (found := at(t))]
+        if not first or not rest_lines:
+            continue
+        for k, (_, idx, stamp, body) in enumerate(first):
+            lines[idx] = stamp + " ".join([body, *(r[k][3] for r in rest_lines if k < len(r))])
+        drop.update(e[1] for r in rest_lines for e in r)
+        changed += 1
+    return "\n".join(ln for i, ln in enumerate(lines) if i not in drop), changed
 
 
 # ---------- SRT / VTT ----------
@@ -215,6 +258,33 @@ class SubtitleSource:
                                 doc_id=doc_id, seq=seq, lang=self.lang, text=text,
                                 translations={k: v for k, v in tr.items() if v},
                                 media=self._media(doc_id, file, cue), tags=list(tags))
+
+
+    def merge_lines(self, doc_id: str, groups: Sequence[Sequence[float]]) -> int:
+        """Lines merged in the web app (groups of start times) joined in the doc's .lrc and its translation files
+        (protocols.LineMerger). The first change keeps the original as <file>.bak. Returns the groups merged."""
+        file = next((f for d, f in iter_files(self.path, self.suffixes)
+                     if d == doc_id and not SIDECAR.search(f.stem)), None)
+        if file is None:
+            raise FileNotFoundError(f"{self.source_id}: no file for {doc_id!r} in {self.path}")
+        if file.suffix.lower() != ".lrc":
+            raise ValueError(f"{file.name}: only .lrc files can be edited this way; join the lines by hand")
+        n = _rewrite(file, lambda t: merge_lrc(t, groups))
+        for lang, layout in self.translations.items():
+            side = self._sidecar(file, lang) if layout == "file" else None
+            if side is not None and side.suffix.lower() == ".lrc":
+                _rewrite(side, lambda t: merge_lrc(t, groups, tolerance=0.35))    # matched by time like _attach_by_time
+        return n
+
+
+def _rewrite(path: Path, edit) -> int:
+    new, n = edit(read_text(path))
+    if n:
+        backup = path.with_name(path.name + ".bak")
+        if not backup.exists():
+            shutil.copyfile(path, backup)
+        path.write_text(new, encoding="utf-8")
+    return n
 
 
 def read_video_list(path: Path) -> dict[str, str]:

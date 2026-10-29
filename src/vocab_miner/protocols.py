@@ -17,6 +17,14 @@ class Source(Protocol):
 
 
 @runtime_checkable
+class LineMerger(Protocol):
+    """Optional for a Source: join lines merged in the web app in its own files (`vm apply-edits`). Each group is
+    the start times of consecutive lines of one doc; returns how many groups were merged."""
+
+    def merge_lines(self, doc_id: str, groups: Sequence[Sequence[float]]) -> int: ...
+
+
+@runtime_checkable
 class Tokenizer(Protocol):
     lang: str
 

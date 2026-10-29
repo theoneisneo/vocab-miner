@@ -156,3 +156,49 @@ def test_translation_layout_validated():
 
 def test_clean_unescapes_html_entities():
     assert clean("aren&#x27;t &amp; won&#39;t") == "aren't & won't"
+
+
+# ---------- lines merged in the web app ----------
+
+def test_merge_lrc_joins_lines_and_skips_repeats_and_done():
+    from vocab_miner.sources.subtitle import merge_lrc
+    text = (SUBS / "sample.lrc").read_text(encoding="utf-8")
+    new, n = merge_lrc(text, [[1.0, 4.5], [8.25, 14.0], [99.0, 100.0]])
+    assert n == 1                                    # 8.25 sits on a repeated line; 99 is not there
+    cues = [c for c in parse_lrc(new) if c.text]
+    assert [c.start for c in cues][:2] == [1.0, 8.25]
+    assert cues[0].text == "今日は朝から雨が降っている。 駅まで歩いて、電車に乗った。"
+    assert merge_lrc(new, [[1.0, 4.5]])[1] == 0     # already merged
+
+
+def test_merge_lrc_bilingual_same_time():
+    from vocab_miner.sources.subtitle import merge_lrc
+    new, n = merge_lrc((SUBS / "bilingual.lrc").read_text(encoding="utf-8"), [[1.0, 5.0]])
+    assert n == 1
+    assert [c.text for c in parse_lrc(new)][:2] == ["窓の外の街はまだ静かだった。 友達に会うのは久しぶりだ。",
+                                                    "窗外的街道還很安靜。 好久沒見到朋友了。"]
+
+
+def test_source_merge_lines_edits_lrc_and_translation_file(tmp_path):
+    for name in ("sample.lrc", "sample.zh-Hant.lrc"):
+        (tmp_path / name).write_text((SUBS / name).read_text(encoding="utf-8"), encoding="utf-8")
+    src = LrcSource("s", tmp_path, "ja", translations={"zh-Hant": "file"})
+    assert src.merge_lines("sample", [[1.0, 4.5]]) == 1
+    us = list(src.utterances())
+    assert us[0].text == "今日は朝から雨が降っている。駅まで歩いて、電車に乗った。"     # cleaning drops the space
+    assert us[0].translations == {"zh-Hant": "今天從早上就在下雨。走路去車站，搭上了電車。"}
+    assert (tmp_path / "sample.lrc.bak").read_text(encoding="utf-8") == (SUBS / "sample.lrc").read_text(encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        src.merge_lines("nope", [[1.0, 4.5]])
+
+
+def test_read_merges_from_exported_data(tmp_path):
+    import json
+
+    from vocab_miner.edits import read_merges
+    m = [{"id": "s:sample:1", "start": 1.0, "text": "a"}, {"id": "s:sample:2", "start": 4.5, "text": "b"}]
+    data = {"docs": [{"source": "s", "doc": "sample", "title": "T", "lines": [{"start": 1.0, "merged": m}, {"start": 9}]},
+                     {"source": "s", "doc": "other", "lines": [{"start": 1.0}]}]}
+    (tmp_path / "e.json").write_text(json.dumps(data), encoding="utf-8")
+    edits = read_merges(tmp_path / "e.json")
+    assert [(e.source_id, e.doc_id, e.title, len(e.groups)) for e in edits] == [("s", "sample", "T", 1)]

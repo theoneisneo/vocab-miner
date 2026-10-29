@@ -672,6 +672,37 @@ def translate_import(
                + ". Run `vm ingest` to apply.")
 
 
+@app.command(name="apply-edits")
+def apply_edits(
+    file: Annotated[Path, typer.Argument(help="Data file exported from the web app (編輯分句 → 匯出資料檔).")],
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Write without asking.")] = False,
+    root: RootOpt = None,
+):
+    """Write lines merged in the web app back to the lyrics files, then ingest those sources again."""
+    from .edits import apply_merges, read_merges
+
+    cfg = _config(root)
+    edits = read_merges(file)
+    if not edits:
+        typer.echo("no merged lines in this file")
+        return
+    for e in edits:
+        typer.echo(f"{e.title}  ({e.source_id}/{e.doc_id})")
+        for g in e.groups:
+            typer.echo("  + " + " / ".join(m.get("text", "") for m in g))
+    if not yes and not typer.confirm("Join these lines in the material files?"):
+        raise typer.Exit(1)
+    try:
+        changed = apply_merges(cfg, edits, log=typer.echo)
+        for r in ingest(cfg, changed) if changed else []:
+            typer.echo(f"{r.source_id}: {r.utterances} utterances in {r.docs} docs -> {r.path}")
+    except (ConfigError, SourceError) as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    if changed:
+        typer.echo("Run `vm web` and import the new data file; the app then drops its own copy of these merges.")
+
+
 @app.command(name="yt-lyrics")
 def yt_lyrics(
     items: Annotated[list[str], typer.Argument(help="List files from yt-list / yt-playlists.")],
