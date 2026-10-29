@@ -639,6 +639,7 @@ async function renderDoc(dsId, ds, doc) {
   showFav();
   view.replaceChildren();
   bookmarkKey = `${dsId}/${doc.id}`;
+  bookmarkDoc = doc;
   const root = el("div", { class: "doc" });
   applyPrefClasses(root);
 
@@ -689,11 +690,8 @@ async function renderDoc(dsId, ds, doc) {
       toggle.textContent = label();
       toggle.setAttribute("aria-expanded", String(prefs.showDisplay));
     });
-    const goBookmark = el("button", { class: "chip bm-go", hidden: getBookmark() < 0,
-      onclick: () => { if (getBookmark() >= 0) playLine(doc, getBookmark()); } }, "🔖 回書籤");
     stick.append(el("div", { class: "toolbar play-row" },
-      chip("單句重複", "loop", () => { loopLine = prefs.loop ? currentLine : -1; }), goBookmark, rateBtn,
-      chip("跟隨", "follow"), toggle));
+      chip("單句重複", "loop", () => { loopLine = prefs.loop ? currentLine : -1; }), rateBtn, chip("跟隨", "follow"), toggle));
   }
   stick.append(displayRow);
   stick.append(data.lang === "en"
@@ -743,7 +741,20 @@ function applyPrefClasses(root) {
 
 // ---------- bookmark: one line per song to start practising from (when 單句重複 is off) ----------
 let bookmarkKey = null;                                 // "<data file>/<doc id>" of the song on screen
+let bookmarkDoc = null;
 const getBookmark = () => (prefs.bookmarks || {})[bookmarkKey] ?? -1;
+
+/** Play from the bookmarked line: the ↩ on the line being played, or the B key. */
+function backToBookmark() {
+  if (bookmarkDoc && getBookmark() >= 0 && !prefs.loop) playLine(bookmarkDoc, getBookmark());
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "b" && ev.key !== "B") return;
+  if (ev.ctrlKey || ev.metaKey || ev.altKey || !document.querySelector(".doc")) return;
+  if (ev.target.closest?.("input, textarea, select, [contenteditable]")) return;
+  backToBookmark();
+});
 
 /** Put the song's bookmark on line i (moving it from another line), or remove it when it is already there. */
 function toggleBookmark(i) {
@@ -752,7 +763,7 @@ function toggleBookmark(i) {
   if (off) delete prefs.bookmarks[bookmarkKey]; else prefs.bookmarks[bookmarkKey] = i;
   savePrefs();
   showBookmark();
-  toast(off ? "已取消書籤" : `書籤設在第 ${i + 1} 句，按「🔖 回書籤」從這句開始播放`);
+  toast(off ? "已取消書籤" : `書籤設在第 ${i + 1} 句：播放中那句的 ↩（或按 B 鍵）會回到這句`);
 }
 
 function showBookmark() {
@@ -762,8 +773,7 @@ function showBookmark() {
     li.classList.toggle("bookmarked", on);
     li.querySelector(".bm-btn")?.setAttribute("aria-pressed", String(on));
   }
-  const go = document.querySelector(".bm-go");
-  if (go) go.hidden = b < 0;
+  document.querySelector(".doc")?.classList.toggle("has-bookmark", b >= 0);
 }
 
 /** Sentence role used for colouring: particles, predicates (verbs/adjectives), auxiliaries (tense, negation...). */
@@ -819,10 +829,14 @@ function renderLine(doc, line, i) {
   const bm = timed ? el("button", { class: "bm-btn", "aria-pressed": "false", "aria-label": "書籤：從這句開始練習",
     title: "書籤：從這句開始練習" }, "🔖") : null;
   if (bm) bm.addEventListener("click", (ev) => { ev.stopPropagation(); toggleBookmark(i); });
+  // shown only on the line being played (CSS), so going back is right where you are looking
+  const back = timed ? el("button", { class: "bm-back", "aria-label": "回到書籤那句（B 鍵）",
+    title: "回到書籤那句（B 鍵）" }, "↩") : null;
+  if (back) back.addEventListener("click", (ev) => { ev.stopPropagation(); backToBookmark(); });
   const li = el("li", { class: "line", "data-i": i },
     el("div", { class: "line-side" },
       timed ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
-      ask, bm),
+      ask, timed ? el("div", { class: "bm-row" }, back, bm) : null),
     jp,
     line.romaji ? el("div", { class: "line-romaji" + (wr.length ? " has-wr" : "") }, line.romaji) : null,
     line.tr ? el("div", { class: "line-tr" }, line.tr) : null,
