@@ -34,6 +34,14 @@ body.cards-open { overflow: hidden; }
 .card-related { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .card-related .small-chip { margin-left: 0; }
 
+.card-examples { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.card-examples h3 { margin: 0; font-size: 15px; }
+.example { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.example .line-jp { font-size: 19px; }
+.example .w { cursor: default; }
+.example .w.marked .wt { background: var(--accent-soft); color: var(--accent); border-radius: 4px; }
+.example-song { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--accent); text-decoration: none; }
+
 .quiz-choices { display: flex; flex-direction: column; gap: 8px; }
 .quiz-choice { display: flex; align-items: center; gap: 10px; text-align: left; font: inherit; font-size: 16px;
   color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 10px;

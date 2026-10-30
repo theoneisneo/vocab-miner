@@ -1,5 +1,5 @@
 /* Offline support: cache the app shell. The data file lives in IndexedDB, videos always need the network. */
-const CACHE = "singalong-v29";
+const CACHE = "singalong-v30";
 const SHELL = ["./", "index.html", "app.css", "app.js", "manifest.webmanifest", "icons/icon.svg",
   "icons/icon-192.png", "icons/icon-512.png", "cards/cards.js", "cards/cards.css"];
 

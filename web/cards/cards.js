@@ -15,7 +15,8 @@ const STORE = "vm.cards";
 const QUIZ_SIZE = 20;
 const CHOICES = 5;
 const FREQ_POOL = 60;           // "高頻詞": 20 drawn from the 60 most frequent words not marked as learned
-const REVIEW_DONE = 2;          // a wrongly answered word leaves review after this many right answers in a row
+const EXAMPLE_LENGTH = 12;     // characters of a good example line
+const REVIEW_DONE = 2;         // a wrongly answered word leaves review after this many right answers in a row
 const KANJI = /[㐀-鿿豈-﫿々〆ヵヶ]/;
 const KATAKANA_WORD = /^[゠-ヿー・]+$/;
 
@@ -42,9 +43,19 @@ function ends(w) {
 }
 
 class Deck {
-  constructor(ds) {
-    // only words in this file's lines (a setlist file keeps the whole word list but only some songs)
-    const used = new Set(ds.docs.flatMap((d) => d.lines.flatMap((l) => l.seg.map((s) => s[2]))));
+  constructor(dsId, ds) {
+    this.dsId = dsId;
+    this.ds = ds;
+    // where each word occurs: word index -> [{doc, i}] (also: only words in this file's lines are cards, as a
+    // setlist file keeps the whole word list but only some songs)
+    this.occurs = new Map();
+    for (const doc of ds.docs) {
+      doc.lines.forEach((l, i) => {
+        for (const wi of new Set(l.seg.map((s) => s[2]).filter((x) => x !== null && x !== undefined))) push(this.occurs, wi, { doc, i });
+      });
+    }
+    this.index = new Map(ds.words.map((w, i) => [w, i]));
+    const used = this.occurs;
     this.words = ds.words.filter((w, i) => used.has(i) && !w.grammar && !w.foreign && w.lemma && w.zh)
       .sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9));
     this.byHead = new Map();
@@ -56,6 +67,23 @@ class Deck {
       push(this.byTail, e.tail, w);
     }
   }
+  /** Lines with the word, easiest first: few words you have not learned, about EXAMPLE_LENGTH characters (a
+   * two-word fragment shows little of how the word is used); one per song first. */
+  examples(w) {
+    const wi = this.index.get(w);
+    const score = ({ doc, i }) => {
+      const l = doc.lines[i];
+      const unknown = new Set(l.seg.map((s) => s[2]).filter((x) => x !== null && x !== undefined && x !== wi
+        && !this.ds.words[x]?.grammar && !api.isKnown(this.ds.words[x]))).size;
+      const len = l.seg.reduce((a, s) => a + s[0].length, 0);
+      return unknown + Math.abs(len - EXAMPLE_LENGTH) / 4 + (l.tr ? 0 : 2);
+    };
+    const all = (this.occurs.get(wi) || []).map((o) => ({ ...o, score: score(o) })).sort((a, b) => a.score - b.score);
+    const firstPerSong = [], rest = [], songs = new Set();
+    for (const o of all) (songs.has(o.doc) ? rest : firstPerSong).push(o), songs.add(o.doc);
+    return { wi, list: [...firstPerSong, ...rest] };
+  }
+
   sameHead(w) { const e = ends(w); return e ? (this.byHead.get(e.head) || []).filter((x) => x !== w) : []; }
   sameTail(w) { const e = ends(w); return e ? (this.byTail.get(e.tail) || []).filter((x) => x !== w) : []; }
 
@@ -137,7 +165,7 @@ export function renderCards(box, appApi, dsId, ds) {
   api = appApi;
   ensureCss();
   const el = api.el;
-  const deck = new Deck(ds);
+  const deck = new Deck(dsId, ds);
   const rec = load();
   const review = deck.words.filter((w) => inReview(rec, w));
   const total = rec.tests.reduce((a, t) => [a[0] + t.ok, a[1] + t.n], [0, 0]);
@@ -242,6 +270,31 @@ function related(deck, w, open) {
     list);
 }
 
+const EXAMPLES = 3;
+
+/** The lyric lines a word appears in (EXAMPLES first, the rest on request); a line opens its song there.
+ * `leave` is asked before leaving (e.g. in the middle of a quiz). */
+function examples(deck, w, leave = () => true) {
+  const el = api.el;
+  const { wi, list } = deck.examples(w);
+  if (!list.length) return null;
+  const box = el("div", { class: "card-examples" });
+  const show = (n) => {
+    box.replaceChildren(el("h3", {}, `歌詞裡的例句（${list.length} 句）`),
+      ...list.slice(0, n).map(({ doc, i }) => {
+        const ex = api.exampleLine(deck.dsId, deck.ds, doc, i, wi);
+        ex.querySelector(".example-song").addEventListener("click", (ev) => {
+          if (!leave()) return ev.preventDefault();
+          closePanel();
+        });
+        return ex;
+      }),
+      n < list.length ? el("button", { class: "link-btn", onclick: () => show(list.length) }, `顯示全部 ${list.length} 句`) : null);
+  };
+  show(EXAMPLES);
+  return box;
+}
+
 // ---------- 1. cards ----------
 
 function openBrowser(deck, words, i, back = []) {
@@ -260,7 +313,9 @@ function openBrowser(deck, words, i, back = []) {
     related(deck, w, open),
     words.length > 1 ? el("div", { class: "cards-row" },
       el("button", { class: "secondary", onclick: () => go(i - 1) }, "‹ 上一張"),
-      el("button", { class: "primary", onclick: () => go(i + 1) }, "下一張 ›")) : null));
+      el("button", { class: "primary", onclick: () => go(i + 1) }, "下一張 ›")) : null,
+    examples(deck, w)));
+  p.scrollTop = 0;
   listenKeys((ev) => {
     if (ev.key === "ArrowRight" && words.length > 1) go(i + 1);
     else if (ev.key === "ArrowLeft" && words.length > 1) go(i - 1);
@@ -325,7 +380,8 @@ function openQuiz(deck, mode, pool, onDone) {
       });
       e.textContent = w.zh;
       e.classList.remove("quiz-hidden");
-      after.replaceChildren(related(deck, w, (x) => openPeek(deck, x)));
+      after.replaceChildren(related(deck, w, (x) => openPeek(deck, x)) || "",
+        examples(deck, w, () => confirm("離開測驗去聽這首歌？這次的結果不會記錄。")) || "");
       next.hidden = false;
       next.focus();
     };

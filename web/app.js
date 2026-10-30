@@ -71,6 +71,7 @@ let lookups = new Map();    // word key -> how many times the word card was open
 let favorites = new Map();  // dataset id -> favourite songs in your order, with separators: [{t:"doc", id} | {t:"sep", label}]
 let editingFav = null;      // dataset id whose favourites are being arranged
 let player = null, ticker = null, currentLine = -1, loopLine = -1;
+let pendingLine = -1;       // line to play as soon as the player is ready (opened from a word card's example)
 
 function isKnown(w) {
   return known.has(w.key) ? known.get(w.key) : w.status === "known";
@@ -90,7 +91,7 @@ const FEATURES = { create: true,     // web/create/: create a song in the browse
 /** The only interface optional features get to the app. */
 function featureApi() {
   return {
-    el, toast, dialog, askAI, loadYouTubeApi, validate, isKnown,
+    el, toast, dialog, askAI, loadYouTubeApi, validate, isKnown, exampleLine,
     get datasets() { return datasets; },
     async saveDataset(id, d) { datasets.set(id, d); await saveDatasets(); },
     openDoc(dsId, docId) { location.hash = `#/doc/${encodeURIComponent(dsId)}/${encodeURIComponent(docId)}`; route(); },
@@ -209,11 +210,12 @@ function validate(d) {
 // ---------- routing ----------
 function route() {
   stopPlayer();
-  const m = location.hash.match(/^#\/doc\/([^/]+)\/(.+)$/);
+  // #/doc/<data file>/<song>, optionally ?line=<n> (from a word card's example: start at that line)
+  const m = location.hash.match(/^#\/doc\/([^/]+)\/([^?]+)(?:\?line=(\d+))?$/);
   if (m) {
     const ds = datasets.get(decodeURIComponent(m[1]));
     const doc = ds && ds.docs.find((d) => d.id === decodeURIComponent(m[2]));
-    if (doc) return renderDoc(decodeURIComponent(m[1]), ds, doc);
+    if (doc) return renderDoc(decodeURIComponent(m[1]), ds, doc, m[3] === undefined ? null : Number(m[3]));
   }
   renderHome();
 }
@@ -633,7 +635,7 @@ async function removeDataset(id) {
 // ---------- song ----------
 let renderSeq = 0;   // a newer render wins when two overlap (renderDoc waits for storage before drawing)
 
-async function renderDoc(dsId, ds, orig) {
+async function renderDoc(dsId, ds, orig, startAt = null) {
   const seq = ++renderSeq;
   data = ds;
   // the song as shown: lines merged on this device (see "merged lines"); a copy, so merging changes only `lines`
@@ -741,6 +743,18 @@ async function renderDoc(dsId, ds, orig) {
   editCtx = { dsId, ds, orig, doc, root, ol };
   showEditing();
   showBookmark();
+  pendingLine = -1;
+  if (startAt !== null && orig.lines[startAt]) {     // a word card's example: show that line, play it when ready
+    const t = orig.lines[startAt].start;
+    let i = doc.lines.indexOf(orig.lines[startAt]);
+    if (i < 0) doc.lines.forEach((l, k) => { if (typeof l.start === "number" && l.start <= t + 0.01) i = k; });
+    const li = ol.querySelector(`.line[data-i="${i}"]`);
+    if (li) {
+      li.classList.add("current");
+      setTimeout(() => followLine(li, "auto"), 50);          // after layout; a long jump, so no animation
+      if (typeof t === "number") pendingLine = i;
+    }
+  }
 
   if (local) startLocalPlayer(playerBox, local, doc);
   else if (youtube) startYouTube(playerBox, youtube, doc);
@@ -955,13 +969,15 @@ function shortGloss(w) {
   return g.length <= 6 ? g : g.slice(0, 5) + "…";
 }
 
-function renderLine(doc, line, i) {
+/** The original text of a line: ruby, and per word a block with its romaji and short meaning (shown in
+ * word-by-word mode). onWord(w, block) is called when a word is tapped; `mark` (a word index) is highlighted. */
+function lineJp(ds, line, onWord, mark = null) {
   const jp = el("div", { class: "line-jp" });
   const wr = Array.isArray(line.wr) ? line.wr : [];
   // pieces of one token (or, in older files, of one word) share a block: the text, its romaji and its meaning
   let text = null, group;
   // languages written with spaces: a token right after another one (", 's n't") hugs it in word-by-word mode
-  const spaced = SPACED_LANGS.has((data.lang || "").split("-")[0]);
+  const spaced = SPACED_LANGS.has((ds.lang || "").split("-")[0]);
   let afterBlock = false;
   for (const s of line.seg) {
     const [t, ruby, wi = null, ti = null] = s;
@@ -970,21 +986,38 @@ function renderLine(doc, line, i) {
     if (g === null) { text = null; group = undefined; jp.append(node); afterBlock = !/\s$/.test(t) && afterBlock; continue; }
     if (g !== group) {
       group = g;
-      const w = wi !== null ? data.words[wi] : null;
+      const w = wi !== null ? ds.words[wi] : null;
       const r = w ? role(w) : "";
       const cls = "w" + (!w ? " plain" : w.grammar ? " grammar" : isKnown(w) ? "" : " new") + (r ? ` role-${r}` : "")
-        + (spaced && afterBlock ? " tight" : "");
+        + (spaced && afterBlock ? " tight" : "") + (mark !== null && wi === mark ? " marked" : "");
       afterBlock = true;
       const block = el("span", { class: cls, "data-w": wi === null ? null : wi });
       text = el("span", { class: "wt" });
       block.append(text);
       if (ti !== null && wr[ti]) block.append(el("span", { class: "wr" }, wr[ti]));
       block.append(el("span", { class: "gl" }, w ? shortGloss(w) : ""));
-      if (w) block.addEventListener("click", (ev) => { ev.stopPropagation(); openWord(w, block, doc, i); });
+      if (w && onWord) block.addEventListener("click", (ev) => { ev.stopPropagation(); onWord(w, block); });
       jp.append(block);
     }
     text.append(node);
   }
+  return jp;
+}
+
+/** A lyric line as an example of word `wi` (word cards): the line word by word, its translation and the song,
+ * which opens at that line. */
+function exampleLine(dsId, ds, doc, i, wi) {
+  const line = doc.lines[i];
+  return el("div", { class: "example show-gloss" },
+    lineJp(ds, line, null, wi),
+    line.romaji ? el("div", { class: "line-romaji" + (Array.isArray(line.wr) && line.wr.length ? " has-wr" : "") }, line.romaji) : null,
+    line.tr ? el("div", { class: "line-tr" }, line.tr) : null,
+    el("a", { class: "example-song", href: `${docRoute(dsId, doc)}?line=${i}` }, `${doc.title} ${fmtTime(line.start)} ▶`));
+}
+
+function renderLine(doc, line, i) {
+  const wr = Array.isArray(line.wr) ? line.wr : [];
+  const jp = lineJp(data, line, (w, block) => openWord(w, block, doc, i));
   const ask = el("button", { class: "ask-btn", "aria-label": "問 AI 這句為什麼這樣翻", title: "問 AI 這句為什麼這樣翻" }, "問");
   ask.addEventListener("click", (ev) => { ev.stopPropagation(); askAI(linePrompt(doc, i)); });
   const ex = line.ex ? el("details", { class: "line-ex" }, el("summary", {}, "解說"), el("p", {}, line.ex)) : null;
@@ -1218,6 +1251,7 @@ function startTicker(doc) {
   stopTicker();
   ticker = setInterval(() => {
     if (!player || !player.ready()) return;
+    if (pendingLine >= 0) { const i = pendingLine; pendingLine = -1; playLine(doc, i); return; }
     const t = player.time();
     if (prefs.loop && loopLine >= 0) {
       const l = doc.lines[loopLine];
@@ -1245,14 +1279,14 @@ function setCurrent(i) {
 }
 
 /** Keep the current line in the upper third of the area below the sticky header, player and toolbar. */
-function followLine(li) {
+function followLine(li, behavior = "smooth") {
   const stick = document.querySelector(".stick");
   const covered = stick ? stick.getBoundingClientRect().bottom : 0;
   const visible = window.innerHeight - covered;
   const r = li.getBoundingClientRect();
   if (r.top >= covered + visible * 0.15 && r.bottom <= covered + visible * 0.7) return;   // already comfortable
   const top = window.scrollY + r.top - covered - visible / 3;
-  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  window.scrollTo({ top: Math.max(0, top), behavior });
 }
 
 // ---------- ask an AI ----------
