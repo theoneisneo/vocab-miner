@@ -270,16 +270,25 @@ function openBrowser(deck, words, i, back = []) {
 
 // ---------- 2. quiz ----------
 
+/** A meaning without punctuation, ellipses and brackets, for telling whether two choices say the same thing. */
+const core = (s) => (s || "").replace(/[\s…・、，,。．.!！?？~〜「」『』（）()［］\[\]\-—–;；:：/]/g, "");
+
 /** Four wrong meanings: words with the same first / last part first (4 drawn at random when there are more),
- * then words of the same part of speech, then any; never a meaning that reads the same as the answer. */
+ * then words of the same part of speech, then any. Left out, so that only one choice is right: the same word
+ * written the same way (あの as 那個… and as 嗯 are two entries), a homophone of a kana-only answer, and a meaning
+ * that contains or is contained in another choice's or appears in the answer's full meaning. */
 function distractors(deck, w) {
-  const seen = new Set([meaning(w)]);
+  const full = core(w.zh);
+  const seen = [core(meaning(w))];
   const out = [];
+  const clash = (m) => full.includes(m) || seen.some((s) => s.includes(m) || m.includes(s));
   const take = (cands) => {
     for (const x of shuffle(cands)) {
       if (out.length >= CHOICES - 1) return;
-      const m = meaning(x);
-      if (x !== w && m && !seen.has(m)) { seen.add(m); out.push(x); }
+      const m = core(meaning(x));
+      if (x === w || !m || x.lemma === w.lemma || (!hasKanji(w) && kanaOf(x) === kanaOf(w)) || clash(m)) continue;
+      seen.push(m);
+      out.push(x);
     }
   };
   take([...new Set([...deck.sameHead(w), ...deck.sameTail(w)])]);
