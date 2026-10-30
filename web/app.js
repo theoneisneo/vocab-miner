@@ -84,12 +84,13 @@ const saveDatasets = () => kvSet("datasets", Object.fromEntries(datasets));
 // ---------- optional features ----------
 // Each lives in its own folder and is loaded only when opened. To switch one off, set it to false;
 // to remove it, also delete its folder. Data it created stays usable (it uses the normal data file format).
-const FEATURES = { create: true };   // web/create/: create a song in the browser
+const FEATURES = { create: true,     // web/create/: create a song in the browser
+  cards: true };                     // web/cards/: word cards and quiz (the 單字卡 tab of Japanese data)
 
 /** The only interface optional features get to the app. */
 function featureApi() {
   return {
-    el, toast, dialog, askAI, loadYouTubeApi, validate,
+    el, toast, dialog, askAI, loadYouTubeApi, validate, isKnown,
     get datasets() { return datasets; },
     async saveDataset(id, d) { datasets.set(id, d); await saveDatasets(); },
     openDoc(dsId, docId) { location.hash = `#/doc/${encodeURIComponent(dsId)}/${encodeURIComponent(docId)}`; route(); },
@@ -286,9 +287,18 @@ function renderDataset(id, ds) {
     el("div", { class: "section-title" },
       `已學會 ${content.filter(isKnown).length} / ${content.length} 個詞 · 產生於 ${(ds.generated || "").slice(0, 10)}`),
     el("div", { class: "tabs", role: "tablist" }, tab("all", "全部"), tab("fav", `★ 最愛${favCount ? ` ${favCount}` : ""}`),
-      isJapanese(ds) ? tab("kana", "五十音") : null),
+      isJapanese(ds) ? tab("kana", "五十音") : null, isJapanese(ds) && FEATURES.cards ? tab("cards", "單字卡") : null),
     v.tab === "fav" ? renderFavorites(id, ds)
-      : v.tab === "kana" && isJapanese(ds) ? renderKana(ds) : renderAll(id, ds, v));
+      : v.tab === "kana" && isJapanese(ds) ? renderKana(ds)
+      : v.tab === "cards" && isJapanese(ds) && FEATURES.cards ? renderCardsTab(id, ds) : renderAll(id, ds, v));
+}
+
+/** The 單字卡 tab (optional feature, loaded when opened). */
+function renderCardsTab(id, ds) {
+  const box = el("div", { class: "hint" }, "載入中…");
+  import("./cards/cards.js").then((m) => m.renderCards(box, featureApi(), id, ds))
+    .catch((err) => box.replaceChildren(`無法載入單字卡：${err.message || err}（第一次需要網路）`));
+  return box;
 }
 
 /** Album groups: each doc under the first album that lists it; the rest under "其他". */

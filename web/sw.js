@@ -1,7 +1,7 @@
 /* Offline support: cache the app shell. The data file lives in IndexedDB, videos always need the network. */
-const CACHE = "singalong-v27";
+const CACHE = "singalong-v28";
 const SHELL = ["./", "index.html", "app.css", "app.js", "manifest.webmanifest", "icons/icon.svg",
-  "icons/icon-192.png", "icons/icon-512.png"];
+  "icons/icon-192.png", "icons/icon-512.png", "cards/cards.js", "cards/cards.css"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
