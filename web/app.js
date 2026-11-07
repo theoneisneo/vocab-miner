@@ -91,7 +91,7 @@ const FEATURES = { create: true,     // web/create/: create a song in the browse
 /** The only interface optional features get to the app. */
 function featureApi() {
   return {
-    el, toast, dialog, askAI, loadYouTubeApi, validate, isKnown, exampleLine,
+    el, toast, dialog, askAI, loadYouTubeApi, validate, isKnown, exampleLine, speakJa,
     get datasets() { return datasets; },
     async saveDataset(id, d) { datasets.set(id, d); await saveDatasets(); },
     openDoc(dsId, docId) { location.hash = `#/doc/${encodeURIComponent(dsId)}/${encodeURIComponent(docId)}`; route(); },
@@ -505,15 +505,27 @@ function kanaCounts(ds) {
 
 /** Say one kana. Katakana goes to the voice so は / へ are not read as the particles wa / e. */
 function sayKana(h) {
+  speakJa(String.fromCodePoint(h.codePointAt(0) + 0x60), 0.8);
+}
+
+/** Say Japanese text with the device's voice (kana chart, word cards). Written for Safari's engine, which every
+ * browser on iPhone / iPad uses: cancel() right before speak() can swallow the new utterance, the voice list can
+ * still be empty on the first tap, and an utterance nobody keeps a reference to can be dropped before it plays. */
+let speaking = null;
+function speakJa(text, rate = 1) {
   if (!("speechSynthesis" in window)) return toast("這個瀏覽器不支援語音");
   const voices = speechSynthesis.getVoices();
-  const voice = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("ja"));
-  if (voices.length && !voice) toast("這台裝置沒有日文語音：到系統設定的「文字轉語音」下載日文語音");
-  const u = new SpeechSynthesisUtterance(String.fromCodePoint(h.codePointAt(0) + 0x60));
+  const voice = voices.find((v) => v.lang && v.lang.toLowerCase().replace("_", "-").startsWith("ja"));
+  if (voices.length && !voice) toast("這台裝置沒有日文語音：到系統設定的「文字轉語音」（iPad：輔助使用 → 朗讀內容 → 聲音）下載日文語音");
+  const u = new SpeechSynthesisUtterance(text);
   u.lang = "ja-JP";
   if (voice) u.voice = voice;
-  u.rate = 0.8;
-  speechSynthesis.cancel();
+  u.rate = rate;
+  u.onerror = (e) => { if (e.error !== "interrupted" && e.error !== "canceled") toast(`無法朗讀（${e.error}）`); };
+  u.onend = () => { if (speaking === u) speaking = null; };
+  speaking = u;
+  if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+  speechSynthesis.resume();                            // Safari can be left paused after a page goes to the background
   speechSynthesis.speak(u);
 }
 

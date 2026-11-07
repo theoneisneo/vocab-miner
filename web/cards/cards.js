@@ -145,20 +145,6 @@ function record(rec, w, right) {
   }
 }
 
-// ---------- speech ----------
-
-function speak(text) {
-  if (!("speechSynthesis" in window)) return api.toast("這個瀏覽器不支援語音");
-  const voices = speechSynthesis.getVoices();
-  const voice = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("ja"));
-  if (voices.length && !voice) api.toast("這台裝置沒有日文語音：到系統設定的「文字轉語音」下載日文語音");
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "ja-JP";
-  if (voice) u.voice = voice;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(u);
-}
-
 // ---------- the 單字卡 tab on the home page ----------
 
 export function renderCards(box, appApi, dsId, ds) {
@@ -248,7 +234,7 @@ function cardFace(w) {
     el("div", { class: "card-jp card-a" }, hasKanji(w) ? w.lemma : ""),
     el("div", { class: "card-jp card-b" }, kanaOf(w)),
     el("div", { class: "card-c" }, w.romaji || ""),
-    el("button", { class: "card-d", "aria-label": "唸出來", onclick: () => speak(kanaOf(w)) }, "🔊"),
+    el("button", { class: "card-d", "aria-label": "唸出來", onclick: () => api.speakJa(kanaOf(w)) }, "🔊"),
   ];
 }
 
