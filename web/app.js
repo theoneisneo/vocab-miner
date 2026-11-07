@@ -1313,51 +1313,27 @@ const ASK_MODES = {
 const ASK_URLS = { chatgpt: "https://chatgpt.com/?q=", claude: "https://claude.ai/new?q=" };
 
 const segText = (line) => line.seg.map((s) => s[0]).join("");
-const segReading = (line) => line.seg.map((s) => s[1] || s[0]).join("");
 
-/** "誰＝誰／の＝的／帰れ＝回去 ..." for the words of a line. */
-function lineWords(line) {
-  const out = [];
-  let group;
-  for (const s of line.seg) {
-    const [t, , wi = null, ti = null] = s;
-    const g = ti !== null ? `t${ti}` : wi !== null ? `w${wi}` : null;
-    if (g === null) { group = undefined; continue; }
-    if (g === group) { out[out.length - 1].text += t; continue; }
-    group = g;
-    out.push({ text: t, w: wi !== null ? data.words[wi] : null });
-  }
-  return out.filter((x) => x.w).map((x) => `${x.text}＝${shortGloss(x.w) || x.w.lemma}`).join("／");
-}
+// Short on purpose: few tokens in, an answer a beginner can read through
+const ASK_STYLE = "我是初學者，請用繁體中文簡短回答（5 行以內），不要用文法術語。";
 
 function linePrompt(doc, i) {
   const line = doc.lines[i];
-  const prev = doc.lines[i - 1], next = doc.lines[i + 1];
-  const ja = data.lang === "ja";
   return [
-    line.tr ? `我在學${langName(data)}，請用繁體中文解釋這句歌詞為什麼這樣翻譯。`
-      : `我在學${langName(data)}，請把這句歌詞翻成繁體中文，並解釋它的意思。`,
-    `歌曲：${doc.title}`,
-    `原文：${segText(line)}`,
-    ja ? `讀音：${segReading(line)}${line.romaji ? `（${line.romaji}）` : ""}` : null,
-    `逐詞：${lineWords(line)}`,
-    prev ? `前一句：${segText(prev)}` : null,
-    next ? `後一句：${segText(next)}` : null,
-    line.tr ? `現有翻譯：${line.tr}` : null,
-    ja ? "請說明：1. 句子結構（動詞在哪、助詞的作用） 2. 逐字直譯 3. 翻譯哪裡是意譯、為什麼 4. 值得記住的文法"
-      : "請說明：1. 句子結構（主詞、動詞、子句） 2. 自然的中文翻譯 3. 歌詞裡省略或倒裝的地方 4. 值得記住的片語或文法",
+    `我在學${langName(data)}歌詞。${ASK_STYLE}`,
+    `原文：${segText(line)}${line.romaji ? `（${line.romaji}）` : ""}`,
+    line.tr ? `翻譯：${line.tr}` : null,
+    line.tr ? "請說明每個詞對應翻譯的哪裡，和一個值得記住的重點。" : "請翻譯，並說明每個詞的意思。",
   ].filter(Boolean).join("\n");
 }
 
 function wordPrompt(w, doc, i) {
   const line = doc && doc.lines[i];
   return [
-    `我在學${langName(data)}，請用繁體中文解釋「${w.lemma}${w.reading && w.reading !== w.lemma ? `（${w.reading}）` : ""}」這個詞。`,
-    line ? `出現的句子：${segText(line)}` : null,
-    line && line.tr ? `句子翻譯：${line.tr}` : null,
-    w.zh ? `字典意思：${w.zh}` : null,
-    w.en ? `英文：${w.en}` : null,
-    "請說明：1. 它在這句裡的意思 2. 這裡是什麼變化形（如果有） 3. 常見用法和兩三個簡單例句",
+    `我在學${langName(data)}。${ASK_STYLE}`,
+    `「${w.lemma}${w.reading && w.reading !== w.lemma ? `（${w.reading}）` : ""}」在這句裡是什麼意思？`
+      + "如果是變化形，原形是什麼？再給一個簡單例句（附拼音）。",
+    line ? `句子：${segText(line)}${line.tr ? `（${line.tr}）` : ""}` : null,
   ].filter(Boolean).join("\n");
 }
 
