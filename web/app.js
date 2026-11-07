@@ -512,60 +512,92 @@ function sayKana(h) {
  * browser on iPhone / iPad uses: cancel() right before speak() can swallow the new utterance, the voice list can
  * still be empty on the first tap, and an utterance nobody keeps a reference to can be dropped before it plays. */
 let speaking = null;
-function speakJa(text, rate = 1) {
-  if (!("speechSynthesis" in window)) return toast("這個瀏覽器不支援語音");
-  const voices = speechSynthesis.getVoices();
-  const voice = voices.find((v) => v.lang && v.lang.toLowerCase().replace("_", "-").startsWith("ja"));
-  if (voices.length && !voice) toast("這台裝置沒有日文語音：到系統設定的「文字轉語音」（iPad：輔助使用 → 朗讀內容 → 聲音）下載日文語音");
+const jaVoices = () => ("speechSynthesis" in window ? speechSynthesis.getVoices() : [])
+  .filter((v) => (v.lang || "").toLowerCase().replace("_", "-").startsWith("ja"));
+
+/** Hand one utterance to the engine; returns it. `voice` null lets the device pick one for ja-JP. */
+function sayWith(text, voice, rate = 1, on = {}) {
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "ja-JP";
   if (voice) u.voice = voice;
   u.rate = rate;
-  // when nothing is heard, say why we think so (no Japanese voice, an error, or it never started)
-  const silent = setTimeout(() => toast(`朗讀沒有開始：裝置有 ${voices.length} 個語音，日文語音：${voice ? voice.name : "沒有"}`
-    + "。請確認沒有開靜音，或到設定下載日文語音"), 2000);
-  u.onstart = () => clearTimeout(silent);
-  u.onerror = (e) => {
-    clearTimeout(silent);
-    if (e.error !== "interrupted" && e.error !== "canceled") toast(`無法朗讀（${e.error}）`);
-  };
-  u.onend = () => { clearTimeout(silent); if (speaking === u) speaking = null; };
+  Object.assign(u, on);
   speaking = u;
   if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
   speechSynthesis.speak(u);
+  return u;
 }
 
-/** Menu → 語音測試: say こんにちは and show what the device reports, for when nothing is heard. */
-async function speechTest() {
+// iOS lists a voice twice when a better version can be downloaded, and drops an utterance without a word when
+// the chosen one is not on the device: then the engine is idle right after speak(), and we ask again with the
+// device's own choice for ja-JP.
+const dropped = () => !speechSynthesis.speaking && !speechSynthesis.pending;
+
+function speakJa(text, rate = 1) {
+  if (!("speechSynthesis" in window)) return toast("這個瀏覽器不支援語音");
+  const voices = speechSynthesis.getVoices();
+  const voice = jaVoices()[0] || null;
+  if (voices.length && !voice) toast("這台裝置沒有日文語音：到系統設定的「文字轉語音」（iPad：輔助使用 → 朗讀內容 → 聲音）下載日文語音");
+  let silent;
+  const on = {
+    onstart: () => clearTimeout(silent),
+    onerror: (e) => {
+      clearTimeout(silent);
+      if (e.error !== "interrupted" && e.error !== "canceled") toast(`無法朗讀（${e.error}）`);
+    },
+    onend: () => clearTimeout(silent),
+  };
+  sayWith(text, voice, rate, on);
+  if (voice && dropped()) sayWith(text, null, rate, on);
+  // when nothing is heard, say why we think so (it never started)
+  silent = setTimeout(() => toast(`朗讀沒有開始：裝置有 ${voices.length} 個語音，日文語音：${voice ? voice.name : "沒有"}`
+    + "。到右上角選單 → 語音測試 看看哪個語音能用"), 2000);
+}
+
+/** Menu → 語音測試: say こんにちは with each Japanese voice (one button each, so every try is spoken on a tap, as
+ * iOS requires) and show what the device reports, for when nothing is heard. */
+function speechTest() {
   const t0 = performance.now();
   const log = [];
   const ms = () => `${Math.round(performance.now() - t0)} ms`;
   const out = el("pre", { class: "speech-log" });
-  const version = (await caches.keys().catch(() => [])).find((k) => k.startsWith("singalong-")) || "（沒有離線快取）";
+  let version = "…";
+  caches.keys().then((ks) => { version = ks.find((k) => k.startsWith("singalong-")) || "（沒有離線快取）"; show(); })
+    .catch(() => { version = "（無法讀取）"; show(); });
+  const voices = "speechSynthesis" in window ? speechSynthesis.getVoices() : [];
+  const ja = jaVoices();
   const show = () => {
-    const voices = "speechSynthesis" in window ? speechSynthesis.getVoices() : [];
-    const ja = voices.filter((v) => (v.lang || "").toLowerCase().replace("_", "-").startsWith("ja"));
-    out.textContent = [`網頁版本：${version}`, `瀏覽器：${navigator.userAgent}`,
-      `語音：共 ${voices.length} 個；日文：${ja.map((v) => `${v.name}${v.localService ? "" : "（線上）"}`).join("、") || "沒有"}`,
+    out.textContent = [`網頁版本：${version}`, `瀏覽器：${navigator.userAgent}`, `語音：共 ${voices.length} 個`,
+      ...ja.map((v, k) => `日文 ${k + 1}：${v.name}｜${v.voiceURI}｜${v.localService ? "本機" : "線上"}${v.default ? "｜預設" : ""}`),
       ...log].join("\n");
   };
+  const tryVoice = (label, voice) => {
+    log.push(`${ms()}　${label}：送出`);
+    sayWith("こんにちは", voice, 1, {
+      onstart: () => { log.push(`${ms()}　${label}：開始唸（沒聽到 → 靜音或音量）`); show(); },
+      onend: () => { log.push(`${ms()}　${label}：唸完`); show(); },
+      onerror: (e) => { log.push(`${ms()}　${label}：錯誤 ${e.error}`); show(); },
+    });
+    log.push(`${ms()}　${label}：送出後 speaking=${speechSynthesis.speaking}, pending=${speechSynthesis.pending}`);
+    setTimeout(() => { log.push(`${ms()}　${label}：2 秒後 speaking=${speechSynthesis.speaking}`); show(); }, 2000);
+    show();
+  };
   if (!("speechSynthesis" in window)) log.push("這個瀏覽器沒有語音功能");
-  else {
-    const u = new SpeechSynthesisUtterance("こんにちは");
-    u.lang = "ja-JP";
-    const ja = speechSynthesis.getVoices().find((v) => (v.lang || "").toLowerCase().replace("_", "-").startsWith("ja"));
-    if (ja) u.voice = ja;
-    u.onstart = () => { log.push(`${ms()}　開始唸（之後沒聽到聲音 → 多半是靜音模式或音量）`); show(); };
-    u.onend = () => { log.push(`${ms()}　唸完`); show(); };
-    u.onerror = (e) => { log.push(`${ms()}　錯誤：${e.error}`); show(); };
-    speaking = u;
-    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-    log.push(`${ms()}　送出「こんにちは」（speaking=${speechSynthesis.speaking}, pending=${speechSynthesis.pending}）`);
-    setTimeout(() => { log.push(`${ms()}　（3 秒後）speaking=${speechSynthesis.speaking}, pending=${speechSynthesis.pending}`); show(); }, 3000);
+  else if (!voices.length) {               // the list loads a moment after the page: open again with it
+    log.push("語音清單還在載入…");
+    speechSynthesis.addEventListener("voiceschanged", () => { if (!$("#dialog").hidden) speechTest(); }, { once: true });
   }
   show();
-  dialog("語音測試", el("p", {}, "應該會聽到「こんにちは」。沒聽到的話，把下面的內容截圖或複製給開發者。"), out);
+  dialog("語音測試", el("p", {}, "一次按一個，應該會聽到「こんにちは」。沒聽到的話，把下面的內容截圖給開發者。"),
+    "speechSynthesis" in window ? el("div", { class: "speech-tries" },
+      ja.map((v, k) => el("button", { class: "chip small-chip", onclick: () => tryVoice(`日文 ${k + 1}`, v) }, `日文 ${k + 1}：${v.name}`)),
+      el("button", { class: "chip small-chip", onclick: () => tryVoice("不指定語音", null) }, "不指定語音"),
+      el("button", { class: "chip small-chip", onclick: () => {
+        log.push(`${ms()}　一般朗讀（單字卡用的）`);
+        speakJa("こんにちは");
+        show();
+      } }, "一般朗讀")) : null,
+    out);
 }
 
 function renderKana(ds) {
