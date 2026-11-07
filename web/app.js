@@ -505,7 +505,8 @@ function kanaCounts(ds) {
 
 /** Say one kana. Katakana goes to the voice so は / へ are not read as the particles wa / e. */
 function sayKana(h) {
-  speakJa(String.fromCodePoint(h.codePointAt(0) + 0x60), 0.8);
+  // a lone kana is said clipped; as a sentence of its own ("ア。") it gets its full length and a proper ending
+  speakJa(`${String.fromCodePoint(h.codePointAt(0) + 0x60)}。`, 0.7);
 }
 
 /** Say Japanese text with the device's voice (kana chart, word cards). Written for Safari's engine, which every
@@ -588,7 +589,9 @@ function speechTest() {
     speechSynthesis.addEventListener("voiceschanged", () => { if (!$("#dialog").hidden) speechTest(); }, { once: true });
   }
   show();
-  dialog("語音測試", el("p", {}, "一次按一個，應該會聽到「こんにちは」。沒聽到的話，把下面的內容截圖給開發者。"),
+  dialog("語音測試", el("p", {}, "一次按一個，應該會聽到「こんにちは」。"),
+    el("p", { class: "hint" }, "iPhone / iPad：開著靜音模式（控制中心的鈴鐺）時，網頁朗讀沒有聲音，影片的聲音則不受影響。"
+      + "紀錄顯示「開始唸」「唸完」卻沒聽到，多半就是這個原因；其他情況請把下面的內容截圖給開發者。"),
     "speechSynthesis" in window ? el("div", { class: "speech-tries" },
       ja.map((v, k) => el("button", { class: "chip small-chip", onclick: () => tryVoice(`日文 ${k + 1}`, v) }, `日文 ${k + 1}：${v.name}`)),
       el("button", { class: "chip small-chip", onclick: () => tryVoice("不指定語音", null) }, "不指定語音"),
