@@ -237,7 +237,7 @@ function stepAdjust() {
 
 function translatePrompt() {
   return [
-    `請把下面的${LANGS[state.lang] || ""}歌詞逐行翻譯成繁體中文。`,
+    `請把下面的${LANGS[state.lang] || ""}歌詞逐行翻譯成正體中文。`,
     `每一行原文輸出一行翻譯，行數必須和原文相同（共 ${state.lines.length} 行），不要加編號、原文或其他說明。`,
     "",
     ...state.lines,

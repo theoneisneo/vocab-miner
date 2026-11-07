@@ -20,7 +20,7 @@ from pathlib import Path
 from .model import Utterance
 
 HEADER = ["doc", "text", "translation"]
-LANG_NAMES = {"zh-Hant": "繁體中文", "zh-Hans": "简体中文", "zh": "中文", "en": "英文", "ja": "日文", "ko": "韓文"}
+LANG_NAMES = {"zh-Hant": "正體中文", "zh-Hans": "简体中文", "zh": "中文", "en": "英文", "ja": "日文", "ko": "韓文"}
 SECTION = re.compile(r"^##\s*\[(\d+)\]")
 LINE = re.compile(r"^\s*(\d+)\s*[|｜]\s?(.*)$")
 

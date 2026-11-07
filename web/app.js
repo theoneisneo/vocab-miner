@@ -1314,13 +1314,13 @@ const ASK_URLS = { chatgpt: "https://chatgpt.com/?q=", claude: "https://claude.a
 
 const segText = (line) => line.seg.map((s) => s[0]).join("");
 
-// Short on purpose: few tokens in, an answer a beginner can read through
-const ASK_STYLE = "我是初學者，請用繁體中文簡短回答（5 行以內），不要用文法術語。";
+// Short on purpose: few tokens in, an answer you can read through (who you are can go at the start of the chat)
+const ASK_STYLE = "請用正體中文簡短回答（5 行以內），不要用文法術語。";
 
 function linePrompt(doc, i) {
   const line = doc.lines[i];
   return [
-    `我在學${langName(data)}歌詞。${ASK_STYLE}`,
+    ASK_STYLE,
     `原文：${segText(line)}${line.romaji ? `（${line.romaji}）` : ""}`,
     line.tr ? `翻譯：${line.tr}` : null,
     line.tr ? "請說明每個詞對應翻譯的哪裡，和一個值得記住的重點。" : "請翻譯，並說明每個詞的意思。",
@@ -1330,7 +1330,7 @@ function linePrompt(doc, i) {
 function wordPrompt(w, doc, i) {
   const line = doc && doc.lines[i];
   return [
-    `我在學${langName(data)}。${ASK_STYLE}`,
+    ASK_STYLE,
     `「${w.lemma}${w.reading && w.reading !== w.lemma ? `（${w.reading}）` : ""}」在這句裡是什麼意思？`
       + "如果是變化形，原形是什麼？再給一個簡單例句（附拼音）。",
     line ? `句子：${segText(line)}${line.tr ? `（${line.tr}）` : ""}` : null,
