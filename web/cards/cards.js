@@ -234,7 +234,8 @@ function cardFace(w) {
     el("div", { class: "card-jp card-a" }, hasKanji(w) ? w.lemma : ""),
     el("div", { class: "card-jp card-b" }, kanaOf(w)),
     el("div", { class: "card-c" }, w.romaji || ""),
-    el("button", { class: "card-d", "aria-label": "唸出來", onclick: () => api.speakJa(kanaOf(w)) }, "🔊"),
+    el("button", { class: "card-d", "aria-label": "唸出來", onclick: () => (api.speakJa ? api.speakJa(kanaOf(w))
+      : api.toast("網頁的程式還沒更新完：請重新整理網頁")) }, "🔊"),
   ];
 }
 

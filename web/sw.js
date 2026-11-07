@@ -1,5 +1,5 @@
 /* Offline support: cache the app shell. The data file lives in IndexedDB, videos always need the network. */
-const CACHE = "singalong-v31";
+const CACHE = "singalong-v32";
 const SHELL = ["./", "index.html", "app.css", "app.js", "manifest.webmanifest", "icons/icon.svg",
   "icons/icon-192.png", "icons/icon-512.png", "cards/cards.js", "cards/cards.css"];
 
@@ -16,8 +16,12 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;   // YouTube etc.: network only
-  // network first so updates show up, cache as fallback when offline
-  e.respondWith(fetch(e.request)
+  // network first so updates show up, cache as fallback when offline. "no-cache" asks the server every time (a
+  // small "not modified" when nothing changed): GitHub Pages lets browsers keep files 10 minutes, which right
+  // after an update can mix a new file with an old one. A page load can only be re-made from its URL.
+  const fresh = e.request.mode === "navigate" ? new Request(url.href, { cache: "no-cache" })
+    : new Request(e.request, { cache: "no-cache" });
+  e.respondWith(fetch(fresh)
     .then((res) => {
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(e.request, copy));
