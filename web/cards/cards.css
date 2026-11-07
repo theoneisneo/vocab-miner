@@ -27,6 +27,7 @@ body.cards-open { overflow: hidden; }
   overflow-x: auto; overflow-y: hidden; max-width: 100%; }
 .card-a { font-weight: 600; }
 .card-c { font-size: 16px; color: var(--muted); min-height: 1.4em; }
+.card-d:active { background: var(--accent-soft); }
 .card-d { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; font-size: 18px;
   padding: 4px 14px; cursor: pointer; margin: 4px 0; }
 .card-e { font-size: 18px; margin-top: 4px; }

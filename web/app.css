@@ -346,3 +346,5 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 
 /* labels on their own line above the link buttons */
 .versions .song-labels { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.speech-log { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px; max-height: 40vh; overflow: auto; user-select: text; }

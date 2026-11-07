@@ -535,6 +535,39 @@ function speakJa(text, rate = 1) {
   speechSynthesis.speak(u);
 }
 
+/** Menu → 語音測試: say こんにちは and show what the device reports, for when nothing is heard. */
+async function speechTest() {
+  const t0 = performance.now();
+  const log = [];
+  const ms = () => `${Math.round(performance.now() - t0)} ms`;
+  const out = el("pre", { class: "speech-log" });
+  const version = (await caches.keys().catch(() => [])).find((k) => k.startsWith("singalong-")) || "（沒有離線快取）";
+  const show = () => {
+    const voices = "speechSynthesis" in window ? speechSynthesis.getVoices() : [];
+    const ja = voices.filter((v) => (v.lang || "").toLowerCase().replace("_", "-").startsWith("ja"));
+    out.textContent = [`網頁版本：${version}`, `瀏覽器：${navigator.userAgent}`,
+      `語音：共 ${voices.length} 個；日文：${ja.map((v) => `${v.name}${v.localService ? "" : "（線上）"}`).join("、") || "沒有"}`,
+      ...log].join("\n");
+  };
+  if (!("speechSynthesis" in window)) log.push("這個瀏覽器沒有語音功能");
+  else {
+    const u = new SpeechSynthesisUtterance("こんにちは");
+    u.lang = "ja-JP";
+    const ja = speechSynthesis.getVoices().find((v) => (v.lang || "").toLowerCase().replace("_", "-").startsWith("ja"));
+    if (ja) u.voice = ja;
+    u.onstart = () => { log.push(`${ms()}　開始唸（之後沒聽到聲音 → 多半是靜音模式或音量）`); show(); };
+    u.onend = () => { log.push(`${ms()}　唸完`); show(); };
+    u.onerror = (e) => { log.push(`${ms()}　錯誤：${e.error}`); show(); };
+    speaking = u;
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+    log.push(`${ms()}　送出「こんにちは」（speaking=${speechSynthesis.speaking}, pending=${speechSynthesis.pending}）`);
+    setTimeout(() => { log.push(`${ms()}　（3 秒後）speaking=${speechSynthesis.speaking}, pending=${speechSynthesis.pending}`); show(); }, 3000);
+  }
+  show();
+  dialog("語音測試", el("p", {}, "應該會聽到「こんにちは」。沒聽到的話，把下面的內容截圖或複製給開發者。"), out);
+}
+
 function renderKana(ds) {
   const { plain, kinds, total } = kanaCounts(ds);
   const digits = Math.max(...plain.values(), 0).toLocaleString("en-US").length;
@@ -1505,6 +1538,7 @@ $("#menu").addEventListener("click", async (ev) => {
   }
   if (action === "create") openFeature("create");   // optional feature
   if (action === "ask") openAskSettings();
+  if (action === "speech-test") speechTest();
   if (action === "import-known") $("#known-file").click();
   if (action === "export-known") {
     const byLang = new Map();   // lang -> key -> word
