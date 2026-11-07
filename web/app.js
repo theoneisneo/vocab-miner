@@ -521,11 +521,17 @@ function speakJa(text, rate = 1) {
   u.lang = "ja-JP";
   if (voice) u.voice = voice;
   u.rate = rate;
-  u.onerror = (e) => { if (e.error !== "interrupted" && e.error !== "canceled") toast(`無法朗讀（${e.error}）`); };
-  u.onend = () => { if (speaking === u) speaking = null; };
+  // when nothing is heard, say why we think so (no Japanese voice, an error, or it never started)
+  const silent = setTimeout(() => toast(`朗讀沒有開始：裝置有 ${voices.length} 個語音，日文語音：${voice ? voice.name : "沒有"}`
+    + "。請確認沒有開靜音，或到設定下載日文語音"), 2000);
+  u.onstart = () => clearTimeout(silent);
+  u.onerror = (e) => {
+    clearTimeout(silent);
+    if (e.error !== "interrupted" && e.error !== "canceled") toast(`無法朗讀（${e.error}）`);
+  };
+  u.onend = () => { clearTimeout(silent); if (speaking === u) speaking = null; };
   speaking = u;
   if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
-  speechSynthesis.resume();                            // Safari can be left paused after a page goes to the background
   speechSynthesis.speak(u);
 }
 
