@@ -53,7 +53,9 @@ async function kvKeys() {
 const PREFS_KEY = "vm.prefs";
 const ALL_RATES = [2, 1.75, 1.5, 1.25, 1, 0.75, 0.5, 0.25];
 const prefs = Object.assign({ ruby: true, romaji: true, tr: true, gloss: false, struct: false, ex: false,
-  follow: true, loop: false, rate: 1, rates: [1, 0.75, 0.5, 0.25], ask: "auto", showDisplay: true, lessonOpen: true },
+  follow: true, loop: false, rate: 1, rates: [1, 0.75, 0.5, 0.25], ask: "auto", showDisplay: true, lessonOpen: true,
+  loopGap: 0.5,      // 單句重複: seconds of silence before the line starts again (kept per device, like the rest)
+  loopTail: 0 },     // 單句重複: seconds played past the line's end, for a last sound that runs on
   safeJson(localStorageGet(PREFS_KEY)));
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function localStorageSet(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } }
@@ -72,6 +74,7 @@ let favorites = new Map();  // dataset id -> favourite songs in your order, with
 let editingFav = null;      // dataset id whose favourites are being arranged
 let player = null, ticker = null, currentLine = -1, loopLine = -1;
 let pendingLine = -1;       // line to play as soon as the player is ready (opened from a word card's example)
+let loopWait = null;        // timer of the pause between two repeats of a line
 
 function isKnown(w) {
   return known.has(w.key) ? known.get(w.key) : w.status === "known";
@@ -1038,7 +1041,10 @@ function renderLine(doc, line, i) {
   const bm = timed ? el("button", { class: "bm-btn", "aria-pressed": "false", "aria-label": "書籤：從這句開始練習",
     title: "書籤：從這句開始練習" }, "🔖") : null;
   if (bm) bm.addEventListener("click", (ev) => { ev.stopPropagation(); toggleBookmark(i); });
-  // shown only on the line being played (CSS), so going back is right where you are looking
+  // ⟲ and ↩ are shown only on the line being played (CSS), right where you are looking
+  const restart = timed ? el("button", { class: "line-restart", "aria-label": "從這句開頭重新播放",
+    title: "從這句開頭重新播放" }, "⟲") : null;
+  if (restart) restart.addEventListener("click", (ev) => { ev.stopPropagation(); playLine(doc, i); });
   const back = timed ? el("button", { class: "bm-back", "aria-label": "回到書籤那句（B 鍵）",
     title: "回到書籤那句（B 鍵）" }, "↩") : null;
   if (back) back.addEventListener("click", (ev) => { ev.stopPropagation(); backToBookmark(); });
@@ -1051,12 +1057,13 @@ function renderLine(doc, line, i) {
   const li = el("li", { class: "line" + (localGroup(line) ? " merged" : ""), "data-i": i },
     el("div", { class: "line-side" },
       timed ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
-      ask, timed ? el("div", { class: "bm-row" }, back, bm) : null),
+      ask, timed ? el("div", { class: "bm-row" }, restart, back, bm) : null),
     jp,
     line.romaji ? el("div", { class: "line-romaji" + (wr.length ? " has-wr" : "") }, line.romaji) : null,
     line.tr ? el("div", { class: "line-tr" }, line.tr) : null,
     ex, edit);
-  li.addEventListener("click", () => playLine(doc, i));
+  // the line being played: a tap pauses / goes on (⟲ starts it again); any other line: play from there
+  li.addEventListener("click", () => (i === currentLine && player && player.ready() ? togglePause() : playLine(doc, i)));
   return li;
 }
 
@@ -1218,6 +1225,7 @@ async function startYouTube(box, videoId, doc) {
   });
   player = {
     ready: () => ready,
+    paused: () => ![YT.PlayerState.PLAYING, YT.PlayerState.BUFFERING].includes(yt.getPlayerState()),
     seek: (t) => yt.seekTo(t, true), play: () => yt.playVideo(), pause: () => yt.pauseVideo(),
     time: () => yt.getCurrentTime(), setRate: (r) => ready && yt.setPlaybackRate(r),
     destroy: () => { try { yt.destroy(); } catch { /* gone */ } },
@@ -1237,6 +1245,7 @@ function startLocalPlayer(box, file, doc) {
   media.addEventListener("error", () => toast("這個檔案無法播放，請換成 mp3、m4a、mp4 等常見格式"));
   player = {
     ready: () => true,
+    paused: () => media.paused,
     seek: (t) => { media.currentTime = t; }, play: () => media.play().catch(() => {}), pause: () => media.pause(),
     time: () => media.currentTime, setRate: (r) => { media.playbackRate = r; },
     destroy: () => { media.pause(); media.removeAttribute("src"); media.load(); URL.revokeObjectURL(url); },
@@ -1247,17 +1256,40 @@ function stopPlayer() {
   stopTicker();
   if (player) player.destroy();
   player = null; currentLine = -1; loopLine = -1;
+  clearTimeout(loopWait);
+  loopWait = null;
   closeSheet();
 }
 
 function playLine(doc, i) {
   const line = doc.lines[i];
   if (!player || !player.ready() || line.start === null || line.start === undefined) return;
+  clearTimeout(loopWait);
+  loopWait = null;
   player.seek(line.start);
   player.play();
   setCurrent(i);
   if (prefs.loop) loopLine = i;
 }
+
+/** Pause, or go on from where it was paused (tapping the line being played, or the space bar). */
+function togglePause() {
+  if (!player || !player.ready()) return;
+  if (loopWait) {                                    // in the pause between two repeats: stay paused
+    clearTimeout(loopWait);
+    loopWait = null;
+    return;
+  }
+  if (player.paused()) player.play(); else player.pause();
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== " " || ev.ctrlKey || ev.metaKey || ev.altKey || !document.querySelector(".doc")) return;
+  if (ev.target.closest?.("input, textarea, select, [contenteditable]")) return;
+  ev.preventDefault();
+  document.activeElement?.blur?.();                  // else the space would also press the focused button
+  togglePause();
+});
 
 function startTicker(doc) {
   stopTicker();
@@ -1267,8 +1299,15 @@ function startTicker(doc) {
     const t = player.time();
     if (prefs.loop && loopLine >= 0) {
       const l = doc.lines[loopLine];
-      const end = l.end ?? (l.start + 6);
-      if (t >= end - 0.05 || t < l.start - 1) { player.seek(l.start); return; }
+      const end = (l.end ?? (l.start + 6)) + (prefs.loopTail || 0);
+      if (t < l.start - 1) { player.seek(l.start); return; }
+      if (t >= end - 0.05) {
+        if (!(prefs.loopGap > 0)) { player.seek(l.start); return; }
+        player.pause();                              // a breath before the line again
+        player.seek(l.start);
+        loopWait = setTimeout(() => { loopWait = null; if (player) player.play(); }, prefs.loopGap * 1000);
+        return;
+      }
     }
     let idx = -1;
     for (let i = 0; i < doc.lines.length; i++) {
@@ -1441,19 +1480,32 @@ function openRateSettings() {
     const input = el("input", { type: "checkbox", value: String(r), checked: rateCycle().includes(r) });
     return el("label", { class: "rate-option" }, input, ` ${r}×`);
   });
+  const seconds = (key, values) => el("select", { class: "setting-select" },
+    values.map((v) => el("option", { value: String(v), selected: v === (prefs[key] ?? 0) }, `${v} 秒`)));
+  const gap = seconds("loopGap", [0, 0.25, 0.5, 0.75, 1, 1.5, 2, 3]);
+  const tail = seconds("loopTail", [0, 0.1, 0.2, 0.3, 0.4, 0.5]);
   const save = el("button", { class: "primary", onclick: () => {
     const chosen = boxes.map((b) => b.querySelector("input")).filter((i) => i.checked).map((i) => Number(i.value));
     if (!chosen.length) return toast("至少要選一個速度");
     prefs.rates = chosen;
     if (!chosen.includes(prefs.rate)) prefs.rate = chosen.includes(1) ? 1 : Math.max(...chosen);
+    prefs.loopGap = Number(gap.value);
+    prefs.loopTail = Number(tail.value);
     savePrefs();
     $("#dialog").hidden = true;
-    toast(`速度按鈕會依序切換：${rateCycle().join(" → ")}`);
+    toast(`已儲存。速度按鈕依序切換：${rateCycle().join(" → ")}`);
     route();
   } }, "儲存");
-  dialog("播放速度", el("p", { class: "hint" },
-    "速度按鈕：往右滑快 0.25 倍、往左滑慢 0.25 倍（0.25～2 倍循環）；點一下則依序切換下面勾選的速度（由快到慢）。"),
-    el("div", { class: "rate-grid" }, boxes), save);
+  dialog("播放設定",
+    el("h3", { class: "setting-head" }, "播放速度"),
+    el("p", { class: "hint" },
+      "速度按鈕：往右滑快 0.25 倍、往左滑慢 0.25 倍（0.25～2 倍循環）；點一下則依序切換下面勾選的速度（由快到慢）。"),
+    el("div", { class: "rate-grid" }, boxes),
+    el("h3", { class: "setting-head" }, "單句重複"),
+    el("label", { class: "setting-row" }, "每次重播前停", gap),
+    el("label", { class: "setting-row" }, "句尾多播", tail),
+    el("p", { class: "hint" }, "最後一個字被切掉時調高「句尾多播」。設定存在這台裝置上，手機和電腦可以各設各的。"),
+    save);
 }
 
 // ---------- menu & import/export ----------
