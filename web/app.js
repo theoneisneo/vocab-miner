@@ -1041,10 +1041,10 @@ function renderLine(doc, line, i) {
   const bm = timed ? el("button", { class: "bm-btn", "aria-pressed": "false", "aria-label": "書籤：從這句開始練習",
     title: "書籤：從這句開始練習" }, "🔖") : null;
   if (bm) bm.addEventListener("click", (ev) => { ev.stopPropagation(); toggleBookmark(i); });
-  // ⟲ and ↩ are shown only on the line being played (CSS), right where you are looking
-  const restart = timed ? el("button", { class: "line-restart", "aria-label": "從這句開頭重新播放",
-    title: "從這句開頭重新播放" }, "⟲") : null;
-  if (restart) restart.addEventListener("click", (ev) => { ev.stopPropagation(); playLine(doc, i); });
+  // ⏸ and ↩ are shown only on the line being played (CSS), right where you are looking
+  const pause = timed ? el("button", { class: "line-pause", "aria-label": "暫停／繼續（空白鍵）",
+    title: "暫停／繼續（空白鍵）" }, PAUSE_ICON) : null;
+  if (pause) pause.addEventListener("click", (ev) => { ev.stopPropagation(); togglePause(); });
   const back = timed ? el("button", { class: "bm-back", "aria-label": "回到書籤那句（B 鍵）",
     title: "回到書籤那句（B 鍵）" }, "↩") : null;
   if (back) back.addEventListener("click", (ev) => { ev.stopPropagation(); backToBookmark(); });
@@ -1057,13 +1057,13 @@ function renderLine(doc, line, i) {
   const li = el("li", { class: "line" + (localGroup(line) ? " merged" : ""), "data-i": i },
     el("div", { class: "line-side" },
       timed ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
-      ask, timed ? el("div", { class: "bm-row" }, restart, back, bm) : null),
+      ask, timed ? el("div", { class: "bm-row" }, pause, back, bm) : null),
     jp,
     line.romaji ? el("div", { class: "line-romaji" + (wr.length ? " has-wr" : "") }, line.romaji) : null,
     line.tr ? el("div", { class: "line-tr" }, line.tr) : null,
     ex, edit);
-  // the line being played: a tap pauses / goes on (⟲ starts it again); any other line: play from there
-  li.addEventListener("click", () => (i === currentLine && player && player.ready() ? togglePause() : playLine(doc, i)));
+  // a tap always plays the line from its start (also the line being played); ⏸ / the space bar pause
+  li.addEventListener("click", () => playLine(doc, i));
   return li;
 }
 
@@ -1272,15 +1272,25 @@ function playLine(doc, i) {
   if (prefs.loop) loopLine = i;
 }
 
-/** Pause, or go on from where it was paused (tapping the line being played, or the space bar). */
+// text presentation, not emoji (iOS draws ⏸ and ▶ as coloured emoji otherwise)
+const PAUSE_ICON = "⏸︎", PLAY_ICON = "▶︎";
+
+/** Pause, or go on from where it was paused (⏸ on the line being played, or the space bar). */
 function togglePause() {
   if (!player || !player.ready()) return;
   if (loopWait) {                                    // in the pause between two repeats: stay paused
     clearTimeout(loopWait);
     loopWait = null;
-    return;
-  }
-  if (player.paused()) player.play(); else player.pause();
+  } else if (player.paused()) player.play(); else player.pause();
+  showPaused();
+}
+
+/** ▶ on the current line's button while paused (a pause between two repeats counts as playing). */
+function showPaused() {
+  const b = document.querySelector(".line.current .line-pause");
+  if (!b || !player || !player.ready()) return;
+  const icon = player.paused() && !loopWait ? PLAY_ICON : PAUSE_ICON;
+  if (b.textContent !== icon) b.textContent = icon;
 }
 
 document.addEventListener("keydown", (ev) => {
@@ -1315,6 +1325,7 @@ function startTicker(doc) {
       if (s !== null && s !== undefined && s <= t + 0.15) idx = i;
     }
     if (idx !== currentLine) setCurrent(idx);
+    showPaused();                                    // also when paused in the video itself
   }, 150);
 }
 function stopTicker() { clearInterval(ticker); ticker = null; }

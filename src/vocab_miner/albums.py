@@ -8,6 +8,7 @@ the first album (in file order) that has it; docs in no album are left for the a
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -29,7 +30,7 @@ ROMANIZED = re.compile(r"\s*\([\x20-\x7e]+\)\s*$")                   # 夜の歌
 
 def clean_title(title: str) -> str:
     """The song title without the usual decorations: "ARTIST / Title (English Version) Official Music Video"."""
-    t = title.replace("（", "(").replace("）", ")")
+    t = unicodedata.normalize("NFC", title).replace("（", "(").replace("）", ")")
     for rx in DECORATIONS:
         t = rx.sub(" ", t)
     m = BRACKETED.search(t)

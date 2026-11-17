@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
 
 # <tag ...>, </tag>, {0}, {name}, [tag] -- markup and placeholders commonly found in game/subtitle text
 TAG = re.compile(r"</?[A-Za-z][^<>]*>|\{[^{}]*\}|\[[^\[\]]*\]")
@@ -30,6 +31,9 @@ def normalize_space(text: str) -> str:
 
 def clean(text: str, *, control_codes: bool = True) -> str:
     text = html.unescape(text)          # &amp; &#39; ... from web-sourced subtitles and lyrics
+    # one code point per character: ピ written as ヒ + a separate ゚ (seen in titles and subtitles) breaks the
+    # tokenizer and the romaji
+    text = unicodedata.normalize("NFC", text)
     if control_codes:
         text = strip_control_codes(text)
     return normalize_space(join_layout_breaks(text))

@@ -150,12 +150,13 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .edit-bar .small-chip { margin-left: 0; }
 .unsaved { color: #e5484d; font-weight: 700; }
 .bm-row { display: flex; gap: 2px; }
-.bm-back { display: none; border: 0; background: none; font-size: 18px; font-weight: 700; color: var(--pred);
-  padding: 2px 6px; min-height: 30px; cursor: pointer; }
-.has-bookmark .line.current .bm-back { display: block; }
-.line-restart { display: none; border: 0; background: none; font-size: 18px; font-weight: 700; color: var(--accent);
-  padding: 2px 6px; min-height: 30px; cursor: pointer; }
-.line.current .line-restart { display: block; }
+/* ⏸ and ↩ on the line being played: big enough to hit on a phone and with a trackpad */
+.bm-back, .line-pause { display: none; border: 0; border-radius: 8px; background: none; font-size: 22px;
+  font-weight: 700; line-height: 1; min-width: 40px; min-height: 40px; padding: 0 6px; cursor: pointer; }
+.bm-back { color: var(--pred); }
+.line-pause { color: var(--accent); }
+.bm-back:hover, .line-pause:hover, .bm-back:active, .line-pause:active { background: var(--accent-soft); }
+.has-bookmark .line.current .bm-back, .line.current .line-pause { display: block; }
 .loop-on .bm-btn, .loop-on .bm-back { display: none !important; }
 .line-ex { display: none; margin-top: 4px; font-size: 14px; }
 .show-ex .line-ex { display: block; }

@@ -28,6 +28,7 @@ def test_clean_title_more_decorations():
     assert clean_title("【ARTIST】Morning Rain feat. FRIEND") == "Morning Rain"
     assert clean_title("【ARTIST】Morning Rain 歌いました") == "Morning Rain"
     assert clean_title("Morning Rain (Live)") == "Morning Rain (Live)"     # all-Latin title: the brackets stay
+    assert clean_title("夜のピエロ") == "夜のピエロ"                    # decomposed ピ joined into one character
 
 
 def test_build_albums(tmp_path):
