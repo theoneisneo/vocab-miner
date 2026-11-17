@@ -19,7 +19,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..model import TRANSCRIBED_TAG, MediaRef, Utterance
+from ..model import TRANSCRIBED_TAG, UNTIMED_TAG, MediaRef, Utterance
 from ..textclean import clean
 from . import iter_files, read_text
 
@@ -258,6 +258,28 @@ class SubtitleSource:
                                 doc_id=doc_id, seq=seq, lang=self.lang, text=text,
                                 translations={k: v for k, v in tr.items() if v},
                                 media=self._media(doc_id, file, cue), tags=list(tags))
+        yield from self._untimed()
+
+    def _untimed(self) -> Iterator[Utterance]:
+        """<video id>.txt (lyrics text, one line per line) for a video of `video_list` that has no timed file
+        yet: its lines without times, tagged "untimed", linked to the video. Other .txt files are left alone."""
+        if not self.video_titles or not self.path.is_dir():
+            return
+        for file in sorted(self.path.glob("*.txt")):
+            doc_id = file.stem
+            if doc_id not in self.video_titles or any(file.with_suffix(s).is_file() for s in self.suffixes):
+                continue
+            title = self.titles.get(doc_id) or self.video_titles.get(doc_id)
+            tags = ([f"title:{title}"] if title else []) + [UNTIMED_TAG]
+            seq = 0
+            for raw in read_text(file).split("\n"):
+                text = self._clean(raw)
+                if not text:
+                    continue
+                seq += 1
+                yield Utterance(id=f"{self.source_id}:{doc_id}:{seq}", source_id=self.source_id, doc_id=doc_id,
+                                seq=seq, lang=self.lang, text=text,
+                                media=MediaRef(kind="youtube", uri=self.youtube.get(doc_id, doc_id)), tags=list(tags))
 
 
     def merge_lines(self, doc_id: str, groups: Sequence[Sequence[float]]) -> int:

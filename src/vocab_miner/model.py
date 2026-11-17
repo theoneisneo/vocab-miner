@@ -12,6 +12,8 @@ from typing import Literal
 NO_STATS_TAG = "no-stats"
 # Text produced by speech recognition (e.g. Whisper): may contain mistakes, apps should say so.
 TRANSCRIBED_TAG = "transcribed"
+# Lines known only as text, without timing (lyrics found but not yet timed): apps show them, not following the media.
+UNTIMED_TAG = "untimed"
 
 
 @dataclass(frozen=True)

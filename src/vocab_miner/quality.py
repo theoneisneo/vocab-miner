@@ -39,6 +39,8 @@ def origin_of(path: Path, meta: dict[str, str]) -> str:
         return "Whisper transcription"
     if "timed with whisper" in re_:
         return "lyrics timed with Whisper"
+    if "automatic captions" in re_:
+        return "lyrics timed with automatic captions"
     if "lrclib" in re_:
         return "LRCLIB"
     if path.suffix.lower() in (".vtt", ".srt"):
@@ -53,6 +55,8 @@ def check_file(path: Path, lang: str, duration: float | None = None, title: str 
     rep = Report(path.stem, title or meta.get("ti", ""), origin_of(path, meta))
     if rep.origin == "Whisper transcription":
         rep.flag("check", "AI transcription: may contain mistakes")
+    if rep.origin == "lyrics timed with automatic captions":
+        rep.flag("check", "timing from YouTube's automatic captions: may be off in places")
     if len(cues) < 5:
         rep.flag("problem", f"only {len(cues)} lines")
     if cues and not in_lang(" ".join(c.text for c in cues), lang):

@@ -113,6 +113,11 @@ def align(lyrics: list[str], words: list[Word]) -> list[Line]:
     """Give each lyric line the time of its words that Whisper heard; lines with no match are spread evenly
     between their timed neighbours. Whisper's words are split like the lyrics (characters for Japanese)
     and each piece keeps the time of its word."""
+    return align_with_coverage(lyrics, words)[0]
+
+
+def align_with_coverage(lyrics: list[str], words: list[Word]) -> tuple[list[Line], float]:
+    """align(), and the share of lines that matched something heard (the rest got times by spreading)."""
     lines = [ln.strip() for ln in lyrics if ln.strip()]
     flat = [(i, t) for i, ln in enumerate(lines) for t in _tokens(ln)]
     heard = [(t, wi) for wi, w in enumerate(words) for t in _tokens(w.text)]
@@ -125,8 +130,9 @@ def align(lyrics: list[str], words: list[Word]) -> list[Line]:
     for i in range(len(lines)):
         hits = [match[k] for k, (li, _) in enumerate(flat) if li == i and k in match]
         spans.append((words[hits[0]].start, words[hits[-1]].end) if hits else None)
+    coverage = sum(s is not None for s in spans) / len(spans) if spans else 0.0
     _fill_gaps(spans, lines, total=words[-1].end if words else 0.0)
-    return [Line(t, s[0], s[1]) for t, s in zip(lines, spans, strict=True)]
+    return [Line(t, s[0], s[1]) for t, s in zip(lines, spans, strict=True)], coverage
 
 
 def _fill_gaps(spans: list, lines: list[str], total: float) -> None:
@@ -159,9 +165,9 @@ def _stamp(t: float) -> str:
     return f"[{int(m):02d}:{s:05.2f}]"
 
 
-def to_lrc(lines: list[Line], title: str = "", transcribed: bool = False) -> str:
+def to_lrc(lines: list[Line], title: str = "", transcribed: bool = False, mark: str | None = None) -> str:
     out = [f"[ti:{title}]"] if title else []
-    out.append(MARK_TRANSCRIBED if transcribed else MARK_ALIGNED)
+    out.append(mark or (MARK_TRANSCRIBED if transcribed else MARK_ALIGNED))
     for k, ln in enumerate(lines):
         out.append(f"{_stamp(ln.start)}{ln.text}")
         nxt = lines[k + 1].start if k + 1 < len(lines) else None

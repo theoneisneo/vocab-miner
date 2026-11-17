@@ -465,6 +465,7 @@ function songRow(id, ds, d, controls = null) {
       titleReading(d) ? el("div", { class: "song-reading" }, titleReading(d)) : null,
       Array.isArray(d.alt) && d.alt.length ? el("div", { class: "song-alt" }, altTitles(d)) : null,
       el("div", { class: "song-sub" }, `${d.lines.length} 句 · 生詞 ${s.fresh}`,
+        d.untimed ? el("span", { class: "song-label untimed-label" }, "無時間軸") : null,
         (d.labels || []).map((l) => el("span", { class: "song-label" }, l)))),
     el("div", { class: "meter" }, `已懂 ${s.pct}%`, el("div", { class: "meter-bar" }, el("span", { style: `width:${s.pct}%` })))];
   const fav = isFav(id, d.id);
@@ -735,6 +736,10 @@ async function renderDoc(dsId, ds, orig, startAt = null) {
   if (doc.transcribed) {
     stick.append(el("div", { class: "transcribed-note" },
       "這首的歌詞是 AI 聽寫的（沒有找到正式歌詞），可能有聽錯的地方，請邊聽邊對照。"));
+  }
+  if (doc.untimed) {
+    stick.append(el("div", { class: "transcribed-note" },
+      "無時間軸：這首的歌詞還沒有對上時間，不會跟著影片捲動，點句子也不會跳到那裡。"));
   }
 
   if (timed) {
@@ -1666,10 +1671,12 @@ $("#known-file").addEventListener("change", async (ev) => {
 /* The version is the cache name in sw.js (singalong-vNN), so there is only one number to bump. */
 async function showVersion() {
   const pick = (s) => (String(s).match(/singalong-(v\d+)/) || [])[1];
+  // the server's sw.js first: the page's files come from the network when online, while the cache name only
+  // changes once the new service worker has taken over (one load later)
   let v;
-  try { v = (await caches.keys()).map(pick).find(Boolean); } catch { /* no cache API (file://) */ }
+  try { v = pick(await (await fetch("sw.js", { cache: "no-cache" })).text()); } catch { /* offline */ }
   if (!v) {
-    try { v = pick(await (await fetch("sw.js", { cache: "no-cache" })).text()); } catch { /* offline */ }
+    try { v = (await caches.keys()).map(pick).filter(Boolean).sort((a, b) => a.slice(1) - b.slice(1)).pop(); } catch { /* no cache API */ }
   }
   if (v) $("#version").textContent = v;
 }

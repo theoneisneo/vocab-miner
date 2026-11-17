@@ -55,7 +55,15 @@ folder). Song projects made by `vm new` live in `data/<name>/` with their lyrics
 
 After `vm update`, read its last section ("still to do"): it lists the songs to check (`quality.tsv`), lines without
 a translation and words without a gloss, with the command for each. Songs graded `check` or `problem` usually came
-from Whisper; tell the user rather than guessing lyrics.
+from speech recognition; tell the user rather than guessing lyrics.
+
+- **Never write lyrics from memory** or "fix" them by guessing: language models invent lines, and lyrics are
+  copyrighted. Correct text comes from the user (or a source they point to); you may point out lines that look
+  misheard.
+- **Whisper is optional** (`uv sync --extra whisper`, needs a few GB; fast only with an NVIDIA GPU). Without it,
+  plain lyrics get their timing from YouTube's automatic captions when the video has them, else they are
+  exported as untimed songs (readable in the app, not following the video). Timing cannot be done by a text
+  model: leave it to Whisper, the captions, or the user.
 
 When you translate (todo files, glosses): keep each line's number and meaning, translate the line on its own
 terms, do not add notes. The target language is in the todo file's header.

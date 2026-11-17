@@ -778,8 +778,11 @@ def _run_songs(playlists: Path, lang: str, output: Path, list_dir: Path, whisper
     typer.echo(f"\n{res.songs} songs: {res.already} already done, {res.subtitles} uploader subtitles, "
                f"{res.synced} synced lyrics, {res.plain} plain lyrics, {res.timed} timed with Whisper, "
                f"{res.transcribed} transcribed"
+               + (f", {res.captioned} timed from automatic captions" if res.captioned else "")
                + (f", {res.translated} translations from subtitles" if translations else "")
-               + (f"; still missing: {', '.join(res.missing)}" if res.missing else ""))
+               + (f"; no lyrics found: {', '.join(res.missing)}" if res.missing else "")
+               + (f"; lyrics without timing (shown untimed in the app): {', '.join(res.untimed)}"
+                  if res.untimed else ""))
     _print_quality(res.reports, output / "quality.tsv")
     return res
 

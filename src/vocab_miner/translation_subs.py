@@ -8,7 +8,7 @@ overwritten, so they can be edited by hand.
 
 Simplified Chinese tracks are converted when Traditional is wanted (and back), with OpenCC (Taiwan phrasing).
 
-When the lyrics' timing came from Whisper and is squeezed (many lines a fraction of a second apart, a sign the
+When the lyrics' timing came from speech recognition (Whisper, automatic captions) and is squeezed (many lines a fraction of a second apart, a sign the
 alignment failed) and the subtitles have exactly one cue per line, the lyrics are re-timed from the subtitles
 (the original is kept as <file>.bak).
 """
@@ -109,7 +109,8 @@ def to_lrc(pairs: Sequence[tuple[float, str]], note: str) -> str:
 def retime(lyrics: Path, subs: Sequence[Cue]) -> bool:
     """Re-time Whisper-timed lyrics whose timing is squeezed from subtitles with one cue per line."""
     text = read_text(lyrics)
-    if lyrics.suffix.lower() != ".lrc" or "whisper" not in lrc_meta(text).get("re", "").lower():
+    note = lrc_meta(text).get("re", "").lower()
+    if lyrics.suffix.lower() != ".lrc" or not ("whisper" in note or "automatic captions" in note):
         return False
     lines, subs = sung(PARSERS[".lrc"](text)), sung(subs)
     if len(lines) != len(subs) or squeezed([c.start for c in lines]) < SQUEEZED_RUN:
@@ -151,7 +152,7 @@ def fetch(rows: Sequence[dict], out: Path, langs: Sequence[str], lyrics_of: Call
     if not todo:
         return results
     factory = ydl_factory or youtube._yt_dlp().YoutubeDL
-    (out / "subs").mkdir(parents=True, exist_ok=True)
+    (out / ".subs").mkdir(parents=True, exist_ok=True)
     infos: dict[str, dict] = {}
     with factory({"quiet": True, "no_warnings": True, "skip_download": True}) as probe:
         for n, (r, lang) in enumerate(todo):
@@ -165,7 +166,7 @@ def fetch(rows: Sequence[dict], out: Path, langs: Sequence[str], lyrics_of: Call
                 if track is None:
                     results.append(TrResult(vid, lang, "none"))
                     continue
-                dest = out / "subs" / f"{vid}.{lang}.vtt"
+                dest = out / ".subs" / f"{vid}.{lang}.vtt"
                 if not dest.exists() and not youtube.download_track(factory, vid, track, dest):
                     results.append(TrResult(vid, lang, "error", "download produced no file"))
                     continue

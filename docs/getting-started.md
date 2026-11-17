@@ -323,6 +323,9 @@ search_links = { Spotify = "https://open.spotify.com/search/{artist}%20{title}" 
 
 ## 13. 沒有時間軸：用 Whisper 產生
 
+Whisper 是選配：沒有適合的顯示卡、或不想下載幾 GB 的檔案，可以跳過這節。`vm songs` / `vm update` 會改用
+YouTube 的自動字幕對時間，再不行就把歌詞當成「無時間軸」的歌匯出（見第 14 節）。
+
 需要 `uv sync --extra whisper`（faster-whisper；有 NVIDIA 顯示卡時會用 GPU，第一次會下載約 1.2 GB 的 CUDA 套件和約 3 GB 的模型）。
 
 ```bash
@@ -351,7 +354,13 @@ uv run vm songs data/playlists.txt --lang en -o data/raw/english
 2. 上傳者提供的字幕（`vm yt-subs`）
 3. LRCLIB：社群整理的公開歌詞資料庫，有時間軸的直接用、純文字的存成 `.txt`（`vm yt-lyrics`）
 4. Whisper：純文字歌詞補上時間、什麼都沒找到的轉寫（`vm transcribe`；`--no-whisper` 跳過、`--separate` 先分離人聲）
-5. 品質報告 `quality.tsv`（`vm quality`）
+5. 沒有 Whisper（沒裝、`--no-whisper`、或處理失敗）時，純文字歌詞改用 **YouTube 的自動字幕**對時間：
+   只借它每個字的時間點，文字還是用正確的歌詞。不需要安裝任何東西，但很多音樂影片沒有自動字幕
+   （實測 10 首裡有 3 首有），時間也比 Whisper 粗一些；對不上一半以上的句子時不採用。
+   查過沒有的記在 `.captions/<影片ID>.none`（刪掉可以重試）。
+6. 還是沒有時間的歌詞照樣匯出成 **無時間軸** 的歌：網頁上可以讀、可以查單字，只是不會跟著影片捲動
+   （歌曲清單會標「無時間軸」）。之後裝了 Whisper 再跑一次，或手動做成 `.lrc`，就會變成有時間軸的歌。
+7. 品質報告 `quality.tsv`（`vm quality`）
 
 - 已經有歌詞檔的歌會跳過，同一首歌的不同上傳（MV 和純音樂版）只算一次。
 - Prologue、Interlude、Cross Fade 這類不是歌的影片會略過；播放清單裡混了其他語言的版本，把影片 ID 或歌名寫進

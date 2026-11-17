@@ -3,7 +3,9 @@
     1. video lists of the playlists in that language (cached, as vm yt-playlists)
     2. the uploader's subtitle track, when there is one (as vm yt-subs)
     3. LRCLIB: time-synced lyrics, or plain lyrics (as vm yt-lyrics)
-    4. Whisper: timing for plain lyrics, or a transcription when nothing else was found (as vm transcribe)
+    4. Whisper: timing for plain lyrics, or a transcription when nothing else was found (as vm transcribe);
+       without Whisper, plain lyrics are timed from YouTube's automatic captions when the video has them
+       (captions.py), else they stay untimed: still readable in the app, without following the video
     5. line translations from the uploader's subtitles in other languages, when asked for (translation_subs)
     6. quality report (as vm quality): <out>/quality.tsv
 
@@ -41,7 +43,9 @@ class SongsResult:
     timed: int = 0
     transcribed: int = 0
     translated: int = 0
-    missing: list[str] = field(default_factory=list)
+    captioned: int = 0
+    missing: list[str] = field(default_factory=list)         # no lyrics at all
+    untimed: list[str] = field(default_factory=list)         # lyrics text without timing
     reports: list[quality.Report] = field(default_factory=list)
 
 
@@ -165,6 +169,27 @@ def run(playlists_file: Path, lang: str, out: Path, list_dir: Path, whisper: boo
             res.transcribed += transcribed
             res.timed += not transcribed
             log(f"[{n}/{len(need)}] {r['title']}: {'transcribed' if transcribed else 'lyrics timed'}")
+    # lyrics text still without timing (no Whisper, or it failed): YouTube's automatic captions
+    plain = [r for r in rows if not has_file(out, r["id"], TIMED) and (out / f"{r['id']}.txt").is_file()
+             and not (out / ".captions" / f"{r['id']}.none").exists()]
+    if plain:
+        from . import captions
+        from . import transcribe as tr
+        log(f"timing from YouTube's automatic captions ({len(plain)} songs)…")
+        for n, r in enumerate(plain, 1):
+            try:
+                lines, note = captions.time_lyrics(r["id"], tr.read_lyrics(out / f"{r['id']}.txt"), lang,
+                                                   out / ".captions")
+            except Exception as e:  # noqa: BLE001 - one unavailable video should not stop the rest
+                lines, note = None, str(e).splitlines()[0]
+            if lines:
+                (out / f"{r['id']}.lrc").write_text(tr.to_lrc(lines, r["title"], mark=captions.MARK),
+                                                    encoding="utf-8")
+                res.captioned += 1
+            else:                                    # remembered, not asked again (delete the file to retry)
+                (out / ".captions").mkdir(parents=True, exist_ok=True)
+                (out / ".captions" / f"{r['id']}.none").write_text(note + "\n", encoding="utf-8")
+            log(f"[{n}/{len(plain)}] {r['title']}: {'timed, ' + note if lines else 'left without timing: ' + note}")
     if translations:
         from . import translation_subs
         log(f"translations from the uploader's subtitles ({', '.join(translations)})…")
@@ -173,7 +198,8 @@ def run(playlists_file: Path, lang: str, out: Path, list_dir: Path, whisper: boo
         for f in found:
             if f.status == "error":
                 log(f"  {f.id} ({f.lang}): {f.detail}")
-    res.missing = [r["title"] for r in rows if not has_file(out, r["id"], TIMED)]
+    res.untimed = [r["title"] for r in rows if not has_file(out, r["id"], TIMED) and has_file(out, r["id"], (".txt",))]
+    res.missing = [r["title"] for r in rows if not has_file(out, r["id"])]
     res.reports = quality.check_folder(out, lang, [out / "videos.tsv"])
     quality.write_report(out / "quality.tsv", res.reports)
     return res
