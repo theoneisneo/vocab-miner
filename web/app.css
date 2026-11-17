@@ -124,12 +124,29 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .lines { list-style: none; margin: 8px 0 0; padding: 0; }
 .line { padding: 10px 8px; border-radius: 10px; }
 .line.current { background: var(--current); box-shadow: inset 4px 0 0 var(--accent); }
-.line-jp { font-size: 22px; line-height: 2.1; word-break: keep-all; overflow-wrap: anywhere; }
-.line-jp ruby rt { font-size: 11px; color: var(--muted); }
+/* --fs: the 字 size setting (1 = normal) */
+.line-jp { font-size: calc(22px * var(--fs, 1)); line-height: 2.1; word-break: keep-all; overflow-wrap: anywhere; }
+.line-jp ruby rt { font-size: calc(11px * var(--fs, 1)); color: var(--muted); }
 .hide-ruby .line-jp rt { visibility: hidden; }
 .hide-ruby .line-jp { line-height: 1.7; }
-.line-romaji { font-size: 14px; color: var(--muted); }
-.line-tr { font-size: 15px; }
+.line-romaji { font-size: calc(14px * var(--fs, 1)); color: var(--muted); }
+.line-tr { font-size: calc(15px * var(--fs, 1)); }
+
+/* the song's player, controls and notes: in the page flow on phones, a column of its own on wide screens */
+.doc-side { display: contents; }
+/* same query as WIDE_QUERY in app.js */
+@media (min-width: 900px) and (orientation: landscape) {
+  main:has(> .doc) { max-width: 1440px; }
+  .doc { display: flex; align-items: flex-start; gap: 24px; }
+  .doc-side {
+    display: block; flex: 0 0 min(44%, 640px); position: sticky;
+    top: calc(57px + max(0px, env(safe-area-inset-top) - 8px) + 12px);
+    max-height: calc(100vh - 57px - 24px); overflow-y: auto; scrollbar-width: thin;
+  }
+  .doc-side .stick { position: static; margin: 0; border-radius: var(--radius); overflow: hidden; }
+  .doc-side .player { max-height: none; }
+  .doc > .lines { flex: 1; min-width: 0; margin-top: 0; }
+}
 .hide-romaji .line-romaji, .hide-tr .line-tr { display: none; }
 .line-side { float: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-left: 8px; }
 .line-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }

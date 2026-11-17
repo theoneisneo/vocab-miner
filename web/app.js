@@ -55,8 +55,11 @@ const ALL_RATES = [2, 1.75, 1.5, 1.25, 1, 0.75, 0.5, 0.25];
 const prefs = Object.assign({ ruby: true, romaji: true, tr: true, gloss: false, struct: false, ex: false,
   follow: true, loop: false, rate: 1, rates: [1, 0.75, 0.5, 0.25], ask: "auto", showDisplay: true, lessonOpen: true,
   loopGap: 0.5,      // 單句重複: seconds of silence before the line starts again (kept per device, like the rest)
-  loopTail: 0 },     // 單句重複: seconds played past the line's end, for a last sound that runs on
+  loopTail: 0,       // 單句重複: seconds played past the line's end, for a last sound that runs on
+  fontScale: 1 },    // size of the lines' text (per device: a laptop may want it bigger than a phone)
   safeJson(localStorageGet(PREFS_KEY)));
+// a song side by side (player and controls left, lines right): the same query as in app.css
+const WIDE_QUERY = "(min-width: 900px) and (orientation: landscape)";
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function localStorageSet(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } }
 function safeJson(s) { try { return JSON.parse(s) || {}; } catch { return {}; } }
@@ -680,7 +683,10 @@ async function renderDoc(dsId, ds, orig, startAt = null) {
   const youtube = doc.media && doc.media.kind === "youtube" ? doc.media.uri : null;
   const timed = doc.lines.some((l) => l.start !== null && l.start !== undefined);
   const stick = el("div", { class: "stick" });             // player + toolbar stay under the top bar
-  root.append(stick);
+  // everything but the lines: on a wide landscape screen it is a column of its own, left of the lines (CSS)
+  const side = el("div", { class: "doc-side" });
+  root.append(side);
+  side.append(stick);
   const playerBox = el("div", { class: "player-wrap" });
   if (local || youtube) stick.append(playerBox);
 
@@ -707,10 +713,21 @@ async function renderDoc(dsId, ds, orig, startAt = null) {
   const playable = !!(local || youtube);
   // row 1: what you press while singing; row 2: how lines are shown (set once, then fold away)
   const has = (f) => doc.lines.some(f);
+  const fontBtn = el("button", { class: "chip rate-chip", "aria-label": "字的大小：左右滑動調整，點一下切換",
+    title: "點左右兩端（‹ ›）調整字的大小" }, fontLabel());
+  const applyFont = (s) => {
+    prefs.fontScale = s;
+    savePrefs();
+    fontBtn.textContent = fontLabel();
+    applyPrefClasses(root);
+    const cur = root.querySelector(".line.current");
+    if (cur) followLine(cur, "auto");
+  };
+  swipeable(fontBtn, (dir) => applyFont(stepFont(prefs.fontScale, dir)), () => applyFont(stepFont(prefs.fontScale, 1, true)));
   const displayRow = el("div", { class: "toolbar display-row" + (playable && !prefs.showDisplay ? " collapsed" : "") },
     has((l) => l.seg.some((s) => s[1])) ? chip("假名", "ruby") : null, has((l) => l.romaji) ? chip("拼音", "romaji") : null,
     has((l) => l.tr) ? chip("中文", "tr") : null, chip("逐詞", "gloss"), chip("結構", "struct"),
-    has((l) => l.ex) ? chip("解說", "ex") : null);
+    has((l) => l.ex) ? chip("解說", "ex") : null, fontBtn);
   if (playable) {
     const label = () => (prefs.showDisplay ? "顯示 ▴" : "顯示 ▾");
     const toggle = el("button", { class: "chip toggle-chip", "aria-expanded": String(!!prefs.showDisplay),
@@ -744,7 +761,7 @@ async function renderDoc(dsId, ds, orig, startAt = null) {
 
   if (timed) {
     const pick = () => { $("#media-file").dataset.target = mediaKey(doc); $("#media-file").click(); };
-    root.append(el("div", { class: "media-bar" },
+    side.append(el("div", { class: "media-bar" },
       local
         ? [el("span", {}, `本機檔案：${local.name}`),
            el("button", { class: "link-btn", onclick: pick }, "更換"),
@@ -754,9 +771,9 @@ async function renderDoc(dsId, ds, orig, startAt = null) {
   }
 
   const versions = renderVersions(doc);
-  if (versions) root.append(versions);
+  if (versions) side.append(versions);
   const lesson = renderLesson(doc);
-  if (lesson) root.append(lesson);
+  if (lesson) side.append(lesson);
   const ol = el("ol", { class: "lines" }, doc.lines.map((line, i) => renderLine(doc, line, i)));
   root.append(ol);
   view.append(root);
@@ -788,6 +805,18 @@ function applyPrefClasses(root) {
   root.classList.toggle("show-struct", !!prefs.struct);
   root.classList.toggle("show-ex", !!prefs.ex);
   root.classList.toggle("loop-on", !!prefs.loop);      // bookmarks are for practising several lines in a row
+  root.style.setProperty("--fs", String(prefs.fontScale || 1));
+}
+
+const FONT_SCALES = [0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75];
+function fontLabel() { return `‹ 字 ${Math.round((prefs.fontScale || 1) * 100)}% ›`; }
+/** One size up or down; `wrap` goes round from the biggest to the smallest (a tap on a phone). */
+function stepFont(current, dir, wrap = false) {
+  let i = FONT_SCALES.indexOf(current);
+  if (i < 0) i = FONT_SCALES.indexOf(1);
+  i += dir;
+  if (wrap) i = (i + FONT_SCALES.length) % FONT_SCALES.length;
+  return FONT_SCALES[Math.max(0, Math.min(FONT_SCALES.length - 1, i))];
 }
 
 // ---------- bookmark: one line per song to start practising from (when 單句重複 is off) ----------
@@ -1346,9 +1375,12 @@ function setCurrent(i) {
 }
 
 /** Keep the current line in the upper third of the area below the sticky header, player and toolbar. */
+const WIDE = window.matchMedia(WIDE_QUERY);
+
 function followLine(li, behavior = "smooth") {
-  const stick = document.querySelector(".stick");
-  const covered = stick ? stick.getBoundingClientRect().bottom : 0;
+  // what covers the top of the lines: the player and toolbar, or (side by side) only the top bar
+  const over = document.querySelector(WIDE.matches ? ".topbar" : ".stick");
+  const covered = over ? over.getBoundingClientRect().bottom : 0;
   const visible = window.innerHeight - covered;
   const r = li.getBoundingClientRect();
   if (r.top >= covered + visible * 0.15 && r.bottom <= covered + visible * 0.7) return;   // already comfortable
