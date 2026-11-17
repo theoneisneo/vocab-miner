@@ -54,6 +54,7 @@ button { font: inherit; color: inherit; }
   background: var(--surface); border-bottom: 1px solid var(--line);
 }
 .topbar h1 { flex: 1; margin: 0; font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .version { font-size: 11px; opacity: 0.5; white-space: nowrap; }
 .icon-btn { border: 0; background: none; font-size: 24px; line-height: 1; min-width: 40px; min-height: 40px; border-radius: 8px; cursor: pointer; }
 .icon-btn:active { background: var(--line); }
 .menu {

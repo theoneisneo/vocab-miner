@@ -1649,4 +1649,16 @@ $("#known-file").addEventListener("change", async (ev) => {
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("sw.js").catch(() => { /* offline support is optional */ });
   }
+  showVersion();
 })();
+
+/* The version is the cache name in sw.js (singalong-vNN), so there is only one number to bump. */
+async function showVersion() {
+  const pick = (s) => (String(s).match(/singalong-(v\d+)/) || [])[1];
+  let v;
+  try { v = (await caches.keys()).map(pick).find(Boolean); } catch { /* no cache API (file://) */ }
+  if (!v) {
+    try { v = pick(await (await fetch("sw.js", { cache: "no-cache" })).text()); } catch { /* offline */ }
+  }
+  if (v) $("#version").textContent = v;
+}
