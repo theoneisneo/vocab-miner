@@ -35,6 +35,14 @@ uv run python scripts/install_hooks.py   # 安裝 pre-commit 檢查（開發者�
 
 **第一次使用？** 請看 [入門教學](docs/getting-started.md)，用附的範例專案走一遍完整流程。
 
+**從歌手的播放清單開始**（歌詞、時間軸、字幕裡的翻譯都自動收集，最後告訴你還缺什麼）：
+
+```bash
+uv run vm new singer "https://www.youtube.com/playlist?list=..." --artist 歌手名
+uv run vm update --root data/singer
+```
+
+**用 AI 工具（Codex、Cursor、Claude Code…）協助？** 讓它先讀 [AGENTS.md](AGENTS.md)：裡面有公開／私人的界線和常見工作的做法。
 
 1. 複製 `config.example.toml` 為 `config.local.toml`（不進版控），在 `[[sources]]` 填入你的素材。
 2. 產生語料：

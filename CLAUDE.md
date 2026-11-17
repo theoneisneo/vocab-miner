@@ -6,20 +6,14 @@
 目前第一個目標語言是日文，但框架必須是**多語言**的：語言相關的東西（分詞、讀音、字典）全部透過介面接入。
 
 > 個人學習目標、私人素材的取得方式與路徑，寫在 `CLAUDE.local.md`（不進版控）。開工前先讀它。
+>
+> **先讀 `AGENTS.md`**：公開與私人的界線（最重要的規則）、常見的內容工作（新增歌手、修歌詞、翻譯、補釋義）、開發與檢查指令都寫在那裡，給所有 AI 工具共用。這份檔案只補充 Claude 專用與較深入的內容。
 
-## 公開與私人的界線（最重要的規則）
+## 公開與私人的界線（摘要，完整版見 AGENTS.md）
 
-這個 repo 會公開。素材本身多半有版權，取得方式也不公開。
-
-- **公開（進 git）**：框架、資料模型、通用 source（純文字、字幕檔、Whisper 轉寫）、從 YouTube 播放清單收集影片與字幕（`vm yt-list` / `vm yt-subs`；yt-dlp 是一般依賴，YouTube 影片本身也是素材來源）、分詞、排序、匯出、測試。
-- **私人（不進 git）**：`private/`、`data/`、`out/`、`.cache/`、`inbox/`（隨手放檔案的收件匣）、`config.local.toml`、`CLAUDE.local.md`。
-  - 任何針對特定網站或特定遊戲的抓取/解析程式，一律放 `private/sources/`。
-  - 任何素材原文（歌詞、台詞、字幕）、由素材產生的詞彙表和卡片，一律只存在 `data/` 或 `out/`。
-- 公開的程式碼、文件、commit message、測試資料裡**不得出現**：特定遊戲或歌曲的原文、私人 source 的實作細節、取得素材用的工具名稱。
-- 測試只用 `tests/fixtures/` 裡自己寫的或公版的文字。
-- `scripts/check_no_corpus.py` 是 pre-commit 檢查，不要繞過它；它擋下東西時，修正內容而不是放寬規則。
-
-不確定某樣東西該放哪邊時，放 `private/`，然後問使用者。
+- 素材原文和由素材產生的任何東西只放 `data/`、`out/`、`.cache/`、`inbox/`、`private/`；針對特定網站或遊戲的程式放 `private/sources/`。
+- 公開的程式碼、文件、commit message、測試資料不得出現素材原文、私人 source 細節、取得素材用的工具名稱。
+- `scripts/check_no_corpus.py` 擋下東西時，修正內容而不是放寬規則。不確定就放 `private/` 並問使用者。
 
 ## 架構
 
@@ -50,16 +44,11 @@ Source / Tokenizer / Exporter 等都用 `"module.path:ClassName"` 字串在設�
 - 讀音與拼音轉寫（`Romanizer`）、字典（`Dictionary`）也是可替換的介面。
 - 語言代碼用 BCP-47（`ja`、`zh-Hant`、`en`）。
 
-## 開發約定
+## 與使用者協作
 
-- Python 3.12+，用 **uv** 管理（`uv sync`、`uv run ...`）。
-- 使用者的主要環境是 **Windows 11 + PowerShell 7**。
-  - 所有檔案讀寫明確指定 `encoding="utf-8"`；給 Excel 開的 CSV 用 `utf-8-sig`。
-  - 產生 `.ps1` 時只用 ASCII，或確保用 `pwsh` 執行（Windows PowerShell 5.1 會把無 BOM 的 UTF-8 讀成亂碼）。
-  - 路徑一律用 `pathlib`。
-- CLI 入口：`uv run vm <command>`（typer）。
-- 測試：`uv run pytest`。每個 source / tokenizer / exporter 都要有用 fixture 的測試。
-- 回覆使用者用繁體中文；程式碼、識別字、commit message 用英文。
+- 回覆使用者用正體中文；程式碼、識別字、commit message 用英文。
+- 推送前先問使用者。
+- 開發環境與檢查指令見 AGENTS.md（Windows 11 + PowerShell 7、uv、`uv run pytest`）。
 
 ## 里程碑
 

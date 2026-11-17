@@ -63,6 +63,9 @@ def check_file(path: Path, lang: str, duration: float | None = None, title: str 
     starts = [c.start for c in cues if c.start is not None]
     if any(b < a for a, b in pairwise(starts)):
         rep.flag("check", "time stamps go backwards")
+    from .translation_subs import SQUEEZED_GAP, SQUEEZED_RUN, squeezed
+    if (n := squeezed(starts)) >= SQUEEZED_RUN:
+        rep.flag("check", f"{n} lines start less than {SQUEEZED_GAP} s after the one before: timing squeezed?")
     if duration and starts:
         last = max((c.end or c.start) for c in cues if c.start is not None)
         if starts[-1] > duration + 5:

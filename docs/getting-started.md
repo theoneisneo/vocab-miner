@@ -360,6 +360,29 @@ uv run vm songs data/playlists.txt --lang en -o data/raw/english
   `影片ID　歌名　歌手`（歌手可省略），沒列的照常推。已經抓過歌詞的歌不會重抓；要重找歌詞，先刪掉那首的 `.lrc` / `.txt`。
 - 輸出資料夾的 `videos.tsv` 是整理過歌名的歌曲清單，設定成 source 的 `video_list`，每句就能連到影片。
 
+**翻譯也從字幕來**：`--translation zh-Hant`（可以重複，例如再加 `-t en`）會再找上傳者附的該語言字幕，
+依時間對到每句歌詞，存成 `<影片ID>.zh-Hant.lrc`。字幕常把一句拆成兩段或兩句併成一段，程式會把同一句的段落接起來；
+簡體字幕會轉成正體（OpenCC，台灣用語），反之亦然。已經有的翻譯檔不會被覆蓋，可以直接手改。
+查過沒有該語言字幕的影片記在 `translation_subs.tsv`，下次不會再查。
+Whisper 對的時間擠成一團（很多句相隔不到半秒）、而字幕剛好一句一段時，會改用字幕的時間（原檔留 `.bak`）。
+
+### 一個歌手一個專案：`vm new` 和 `vm update`
+
+不想自己寫設定檔時，用 `vm new` 開一個獨立的專案（語言、分詞、字典等設定從主專案複製，字典檔共用）：
+
+```bash
+uv run vm new singer "https://www.youtube.com/playlist?list=..." "https://music.youtube.com/browse/MPREb_..." --artist 歌手名
+uv run vm update --root data/singer
+```
+
+- `vm new` 寫出 `data/singer/config.local.toml` 和 `data/singer/playlists.txt`（每張專輯一行，專輯名稱可以改）。
+  播放清單可以是 YouTube 的播放清單，也可以是 YouTube Music 的專輯頁。
+- 翻譯語言預設 `zh-Hant`；`-t en` 改成英文，`-t none` 不找翻譯。之後也可以改設定檔 `[songs]` 的 `translations`。
+- `vm update` 依序做完：收集歌詞（`vm songs`）→ 轉成句子（`vm ingest`）→ 網頁資料檔（`vm web`），
+  最後列出還缺什麼（要檢查的歌、沒翻譯的句子、沒釋義的詞）和補齊用的指令。加了新的播放清單或修改過檔案，再跑一次就好。
+- 歌名或歌手從 YouTube 推錯時（例如官方曲目只有羅馬拼音），寫進 `data/raw/singer/titles.tsv`；
+  聽寫錯很多的歌，把正確歌詞存成 `data/raw/singer/<影片ID>.txt`、刪掉那首的 `.lrc` 再跑 `vm update`，Whisper 只負責對時間。
+
 **品質報告**：每首歌標成 `ok`（可以直接用）、`check`（建議看一下：AI 轉寫、歌詞在影片結束前很早就停、Whisper 自己
 加的「Thanks for watching」）、`problem`（大概有錯：主要不是該語言、歌詞比影片長、幾乎沒有內容）。也可以單獨執行：
 

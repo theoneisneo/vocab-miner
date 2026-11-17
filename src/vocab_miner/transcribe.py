@@ -174,7 +174,8 @@ LATIN_LANGS = {"en", "fr", "de", "es", "it", "pt", "nl", "id", "vi"}
 
 # Whisper was trained on video subtitles and fills silence with their sign-offs
 MADE_UP = re.compile(r"^\W*(thanks?( you)?( so much)? for watching|thank you( very much)?|please subscribe|"
-                     r"subscribe|subtitles? by\b.*|ご視聴ありがとうございました|チャンネル登録.*)\W*$", re.IGNORECASE)
+                     r"subscribe|subtitles? by\b.*|ご視聴ありがとうございました|チャンネル登録.*|"
+                     r"(?:作詞|作曲|編曲)\s*[・:：/／].*)\W*$", re.IGNORECASE)   # 作詞・作曲・編曲 <a name>: credits it never heard
 
 
 def drop_made_up(lines: list[Line]) -> list[Line]:

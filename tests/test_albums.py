@@ -13,6 +13,13 @@ def test_title_key_removes_decorations():
     assert title_key("アサ", {"アサ": "Asa"}) == "asa"
 
 
+def test_read_playlists_accepts_music_album_pages(tmp_path):
+    pl = tmp_path / "playlists.txt"
+    pl.write_text("ja | Album | https://music.youtube.com/browse/MPREb_abc123\n"
+                  "ja | Other | https://www.youtube.com/playlist?list=OLAK5uy_xyz\n", encoding="utf-8")
+    assert [p.list_id for p in read_playlists(pl)] == ["MPREb_abc123", "OLAK5uy_xyz"]
+
+
 def test_clean_title_more_decorations():
     assert clean_title("【ARTIST】朝の雨 (Asa No Ame)") == "朝の雨"            # tag and romanized reading
     assert clean_title("【ARTIST】朝の雨（Asa）") == "朝の雨"                  # full-width brackets

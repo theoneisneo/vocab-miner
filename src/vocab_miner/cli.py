@@ -268,6 +268,7 @@ def web(
         name = file_name or (path.name if setlist else wcfg.get("file_name", path.name))
         shutil.copyfile(path, dest / name)
         typer.echo(f"  copied -> {dest / name}")
+    return data
 
 
 @app.command()
@@ -415,6 +416,12 @@ def names(
 
 
 def _gloss_path(cfg, lang: str) -> Path:
+    """The editable gloss TSV for `lang`: the configured TsvGlossDictionary for it (a project may share the main
+    project's), else data/gloss/<target>-<lang>.tsv."""
+    from .pipeline import DEFAULT_DICTIONARIES
+    for d in cfg.get("dictionaries", DEFAULT_DICTIONARIES):
+        if d.get("plugin", "").endswith(":TsvGlossDictionary") and d.get("gloss_lang") == lang and d.get("path"):
+            return cfg.resolve(d["path"])
     return cfg.data_dir / "gloss" / f"{cfg.get('target_lang', 'ja')}-{lang.split('-')[0]}.tsv"
 
 
@@ -750,16 +757,112 @@ def songs_cmd(
     separate: Annotated[bool, typer.Option("--separate/--no-separate", help="Separate vocals before Whisper.")] = False,
     model: Annotated[str, typer.Option(help="Whisper model.")] = "large-v3",
     list_dir: Annotated[Path, typer.Option(help="Where video lists and audio are kept.")] = YT_DIR,
+    translation: Annotated[list[str] | None, typer.Option(
+        "--translation", "-t", help="Also make <id>.<lang>.lrc from the uploader's subtitles in this language "
+                                    "(e.g. zh-Hant; repeat for more).")] = None,
 ):
-    """Playlists -> uploader subtitles -> LRCLIB -> Whisper -> quality report, skipping songs already done."""
+    """Playlists -> uploader subtitles -> LRCLIB -> Whisper -> translations -> quality report, skipping what is done."""
+    _run_songs(playlists, lang, output, list_dir, whisper, separate, model, translation or [])
+    typer.echo(f"Song list with clean titles: {output / 'videos.tsv'} (use it as the source's video_list)")
+
+
+def _run_songs(playlists: Path, lang: str, output: Path, list_dir: Path, whisper: bool, separate: bool,
+               model: str, translations: list[str]):
     from . import songs
     try:
-        res = songs.run(playlists, lang, output, list_dir, whisper, separate, model, log=typer.echo)
+        res = songs.run(playlists, lang, output, list_dir, whisper, separate, model, log=typer.echo,
+                        translations=translations)
     except (ValueError, ImportError) as e:
         typer.secho(str(e), fg="red", err=True)
         raise typer.Exit(1)
     typer.echo(f"\n{res.songs} songs: {res.already} already done, {res.subtitles} uploader subtitles, "
                f"{res.synced} synced lyrics, {res.plain} plain lyrics, {res.timed} timed with Whisper, "
-               f"{res.transcribed} transcribed" + (f"; still missing: {', '.join(res.missing)}" if res.missing else ""))
+               f"{res.transcribed} transcribed"
+               + (f", {res.translated} translations from subtitles" if translations else "")
+               + (f"; still missing: {', '.join(res.missing)}" if res.missing else ""))
     _print_quality(res.reports, output / "quality.tsv")
-    typer.echo(f"Song list with clean titles: {output / 'videos.tsv'} (use it as the source's video_list)")
+    return res
+
+
+@app.command(name="new")
+def new_cmd(
+    name: Annotated[str, typer.Argument(help="Project name: data/<name>/ (letters, digits, - or _).")],
+    urls: Annotated[list[str] | None, typer.Argument(help="YouTube playlist or YouTube Music album URLs.")] = None,
+    artist: Annotated[str, typer.Option(help="Artist name, for lyrics search and the Spotify search button.")] = "",
+    lang: Annotated[str | None, typer.Option(help="Language of the songs (default: the main project's).")] = None,
+    translation: Annotated[list[str] | None, typer.Option(
+        "--translation", "-t", help="Translation language(s) to take from the uploader's subtitles "
+                                    "(default zh-Hant; 'none' for none).")] = None,
+    title: Annotated[str, typer.Option(help="Name of the data file in the app (default: the artist).")] = "",
+    root: RootOpt = None,
+):
+    """Start a songs project of its own: data/<name>/ with its config and playlists. Then: vm update --root data/<name>"""
+    from .fetch.youtube import playlist_entries
+    from .project import album_name, new_project, shown
+
+    base = _config(root)
+    trs = [] if translation == ["none"] else (translation or ["zh-Hant"])
+
+    def album_title(url: str) -> str:
+        try:
+            return album_name(playlist_entries(url)[0])
+        except Exception:  # noqa: BLE001 - the name is only a label; edit playlists.txt if it is missing
+            return "-"
+
+    try:
+        path = new_project(base, name, urls or [], artist=artist, lang=lang, translations=trs, title=title,
+                           album_title=album_title)
+    except (ValueError, FileExistsError) as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    rel = shown(path)
+    typer.echo(f"new project -> {rel}/config.local.toml, {rel}/playlists.txt")
+    typer.echo(f"next:  uv run vm update --root {rel}")
+
+
+@app.command(name="update")
+def update_cmd(
+    whisper: Annotated[bool, typer.Option("--whisper/--no-whisper", help="Use Whisper for what is still missing.")] = True,
+    separate: Annotated[bool, typer.Option("--separate/--no-separate", help="Separate vocals before Whisper.")] = False,
+    model: Annotated[str, typer.Option(help="Whisper model.")] = "large-v3",
+    root: RootOpt = None,
+):
+    """Everything for a songs project, in order: lyrics (vm songs), the corpus (vm ingest), the app's data file
+    (vm web). Then lists what is still missing and the commands that fill it in."""
+    from .project import shown, songs_settings, summary
+
+    cfg = _config(root)
+    try:
+        s = songs_settings(cfg)
+    except ValueError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    typer.secho("== lyrics", bold=True)
+    res = _run_songs(s["playlists"], s["lang"], s["output"], s["list_dir"], whisper and s["whisper"], separate,
+                     model, s["translations"])
+    typer.secho("== corpus", bold=True)
+    ingest_cmd(None, root)
+    typer.secho("== data file for the app", bold=True)
+    data = web(root=root)
+    gloss = (cfg.get("gloss_langs") or [None])[0]
+    left = summary(data, gloss)
+    r = f" --root {shown(cfg.root)}" if root else ""
+    typer.secho("== still to do", bold=True)
+    todo = 0
+    if bad := [x for x in res.reports if x.grade != "ok"]:
+        todo += 1
+        typer.echo(f"- {len(bad)} songs to check (see above, or {shown(s['output'] / 'quality.tsv')}). Fix a line in its "
+                   f".lrc file; for a song with wrong words, put the right lyrics in <video id>.txt, delete the "
+                   f".lrc and run vm update again (Whisper only adds the timing).")
+    if left["untranslated"]:
+        todo += 1
+        typer.echo(f"- {left['untranslated']} of {left['lines']} lines have no translation "
+                   f"({left['songs_untranslated']} songs with none): uv run vm translate-todo{r} -o todo.txt, "
+                   f"translate it (any chat AI), then uv run vm translate-import todo.txt{r} and vm update{r}")
+    if left["no_gloss"]:
+        todo += 1
+        typer.echo(f"- {left['no_gloss']} of {left['words']} words have no {gloss} gloss: "
+                   f"uv run vm gloss-todo{r} -o gloss.tsv, fill in the gloss column (any chat AI), then "
+                   f"uv run vm gloss-import gloss.tsv{r} and vm update{r}")
+    if not todo:
+        typer.echo("nothing: import the data file in the app")

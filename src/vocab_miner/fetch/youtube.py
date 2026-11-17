@@ -135,15 +135,23 @@ def _one(factory, probe, vid: str, title: str, dest: Path, lang: str, auto: bool
         track, status, opts = generated, "auto", {"writeautomaticsub": True}
     else:
         return SubResult(vid, title, "auto-available" if generated else "none")
+    if not download_track(factory, vid, track, dest, **opts):
+        return SubResult(vid, title, "error", "download produced no file")
+    return SubResult(vid, title, status, f"{dest.name} ({track})")
+
+
+def download_track(factory, vid: str, track: str, dest: Path, **opts) -> bool:
+    """One subtitle track (a key of info["subtitles"]) of a video, saved as `dest` (.vtt)."""
     stem = dest.with_suffix("")
     with factory({"quiet": True, "no_warnings": True, "skip_download": True, "subtitleslangs": [track],
-                  "subtitlesformat": "vtt", "outtmpl": str(stem) + ".%(ext)s", **opts}) as ydl:
+                  "subtitlesformat": "vtt", "outtmpl": str(stem) + ".%(ext)s",
+                  **(opts or {"writesubtitles": True})}) as ydl:
         ydl.download([watch_url(vid)])
-    got = sorted(dest.parent.glob(f"{vid}.*.vtt"))     # yt-dlp names it <id>.<lang>.vtt
+    got = sorted(dest.parent.glob(f"{stem.name}.*.vtt"))     # yt-dlp names it <stem>.<track>.vtt
     if not got:
-        return SubResult(vid, title, "error", "download produced no file")
+        return False
     got[0].replace(dest)
-    return SubResult(vid, title, status, f"{dest.name} ({track})")
+    return True
 
 
 def write_report(path: Path, results: Iterable[SubResult]) -> None:
@@ -183,7 +191,7 @@ def download_audio(vid: str, out: Path, ydl_factory: Callable | None = None) -> 
 
 # ---------- a file of playlists (language | album | url) ----------
 
-LIST_ID = re.compile(r"[?&]list=([\w-]+)")
+LIST_ID = re.compile(r"[?&]list=([\w-]+)|/browse/(MPREb_[\w-]+)")     # a playlist, or a YouTube Music album page
 
 
 @dataclass
@@ -195,7 +203,7 @@ class Playlist:
     @property
     def list_id(self) -> str:
         m = LIST_ID.search(self.url)
-        return m.group(1) if m else ""
+        return (m.group(1) or m.group(2)) if m else ""
 
 
 def read_playlists(path: Path) -> list[Playlist]:

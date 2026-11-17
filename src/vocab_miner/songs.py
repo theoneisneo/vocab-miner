@@ -4,7 +4,8 @@
     2. the uploader's subtitle track, when there is one (as vm yt-subs)
     3. LRCLIB: time-synced lyrics, or plain lyrics (as vm yt-lyrics)
     4. Whisper: timing for plain lyrics, or a transcription when nothing else was found (as vm transcribe)
-    5. quality report (as vm quality): <out>/quality.tsv
+    5. line translations from the uploader's subtitles in other languages, when asked for (translation_subs)
+    6. quality report (as vm quality): <out>/quality.tsv
 
 Songs that already have a file in the output folder are skipped, also when the file belongs to another upload of
 the same song (a music video and a music-only track of one song count once). Non-songs in playlists (prologues,
@@ -39,6 +40,7 @@ class SongsResult:
     plain: int = 0
     timed: int = 0
     transcribed: int = 0
+    translated: int = 0
     missing: list[str] = field(default_factory=list)
     reports: list[quality.Report] = field(default_factory=list)
 
@@ -99,8 +101,13 @@ def collect(playlists: list[youtube.Playlist], lang: str, list_dir: Path, log: C
     return rows
 
 
+def lyrics_file(out: Path, vid: str) -> Path | None:
+    return next((out / f"{vid}{s}" for s in TIMED if (out / f"{vid}{s}").is_file()), None)
+
+
 def run(playlists_file: Path, lang: str, out: Path, list_dir: Path, whisper: bool = True, separate: bool = False,
-        model: str = "large-v3", log: Callable[[str], None] = print) -> SongsResult:
+        model: str = "large-v3", log: Callable[[str], None] = print,
+        translations: list[str] | tuple[str, ...] = ()) -> SongsResult:
     res = SongsResult()
     out.mkdir(parents=True, exist_ok=True)
     rows = collect(youtube.read_playlists(playlists_file), lang, list_dir, log, read_titles(out / "titles.tsv"))
@@ -158,6 +165,14 @@ def run(playlists_file: Path, lang: str, out: Path, list_dir: Path, whisper: boo
             res.transcribed += transcribed
             res.timed += not transcribed
             log(f"[{n}/{len(need)}] {r['title']}: {'transcribed' if transcribed else 'lyrics timed'}")
+    if translations:
+        from . import translation_subs
+        log(f"translations from the uploader's subtitles ({', '.join(translations)})…")
+        found = translation_subs.fetch(rows, out, list(translations), lambda vid: lyrics_file(out, vid), log=log)
+        res.translated = sum(f.status == "written" for f in found)
+        for f in found:
+            if f.status == "error":
+                log(f"  {f.id} ({f.lang}): {f.detail}")
     res.missing = [r["title"] for r in rows if not has_file(out, r["id"], TIMED)]
     res.reports = quality.check_folder(out, lang, [out / "videos.tsv"])
     quality.write_report(out / "quality.tsv", res.reports)
