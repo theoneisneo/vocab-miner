@@ -14,23 +14,31 @@ from pathlib import Path
 from .fetch.youtube import Playlist, list_file, read_list
 
 DECORATIONS = [
+    re.compile(r"【[^】]*】"),                                          # 【ARTIST】 【MV】 【Live】
     re.compile(r"\([^)]*(?:english|\beng\b)[^)]*\)", re.IGNORECASE),      # (「朝の雨」English Ver.) (朝の雨 English Version)
-    re.compile(r"\b(?:official\s+)?(?:music|lyrics?)\s+video\b|\bofficial\s+video\b", re.IGNORECASE),
+    re.compile(r"\b(?:official\s+)?(?:music|lyrics?)\s+video\b|\bofficial\s+(?:video|audio)\b", re.IGNORECASE),
     re.compile(r"\((?:feat|ft)\.[^)]*\)", re.IGNORECASE),
+    re.compile(r"\s(?:feat|ft)\.\s[^/\-()]*$", re.IGNORECASE),            # "Title feat. X" at the end
+    re.compile(r"\([^)]*\bfrom\b[^)]*\)", re.IGNORECASE),                # (SINGER from SOME FILM)
+    re.compile(r"歌(?:いました|ってみた)"),                               # cover tags
     re.compile(r"^\s*[^/「]{1,40}?\s+[-/]\s+"),                      # "ARTIST / Title", "ARTIST feat. X - Title"
 ]
 BRACKETED = re.compile(r"「([^」]+)」")                              # ARTIST「朝の雨」 Official Music Video
+ROMANIZED = re.compile(r"\s*\([\x20-\x7e]+\)\s*$")                   # 夜の歌 (Yoru No Uta): the reading in Latin letters
 
 
 def clean_title(title: str) -> str:
     """The song title without the usual decorations: "ARTIST / Title (English Version) Official Music Video"."""
-    t = title
+    t = title.replace("（", "(").replace("）", ")")
     for rx in DECORATIONS:
         t = rx.sub(" ", t)
     m = BRACKETED.search(t)
     if m:
         t = m.group(1)
     t = re.sub(r"[(\[]\s*[)\]]", " ", t)          # brackets emptied by the removals above
+    head = ROMANIZED.sub("", t)
+    if head != t and not head.isascii():
+        t = head
     return re.sub(r"\s+", " ", t).strip()
 
 

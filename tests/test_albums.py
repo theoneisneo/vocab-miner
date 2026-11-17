@@ -1,4 +1,4 @@
-from vocab_miner.albums import build_albums, title_key
+from vocab_miner.albums import build_albums, clean_title, title_key
 from vocab_miner.fetch.youtube import list_file, read_playlists, write_list
 
 
@@ -11,6 +11,16 @@ def test_title_key_removes_decorations():
     assert title_key("朝の雨 (feat. 友達)") == "朝の雨"
     assert title_key("Two-Step") == "twostep"                       # a hyphen inside a title stays a title
     assert title_key("アサ", {"アサ": "Asa"}) == "asa"
+
+
+def test_clean_title_more_decorations():
+    assert clean_title("【ARTIST】朝の雨 (Asa No Ame)") == "朝の雨"            # tag and romanized reading
+    assert clean_title("【ARTIST】朝の雨（Asa）") == "朝の雨"                  # full-width brackets
+    assert clean_title("【MV】Morning Rain / 朝の雨（SINGER from SOME FILM）") == "朝の雨"
+    assert clean_title("【ARTIST】Morning Rain（Official Audio）") == "Morning Rain"
+    assert clean_title("【ARTIST】Morning Rain feat. FRIEND") == "Morning Rain"
+    assert clean_title("【ARTIST】Morning Rain 歌いました") == "Morning Rain"
+    assert clean_title("Morning Rain (Live)") == "Morning Rain (Live)"     # all-Latin title: the brackets stay
 
 
 def test_build_albums(tmp_path):
