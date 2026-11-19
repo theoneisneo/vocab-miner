@@ -131,6 +131,9 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .hide-ruby .line-jp { line-height: 1.7; }
 .line-romaji { font-size: calc(14px * var(--fs, 1)); color: var(--muted); }
 .line-tr { font-size: calc(15px * var(--fs, 1)); }
+/* romaji syllables in two alternating colours (ha·shi·ri·da·shi·ta) */
+.line-romaji .mora-a { color: var(--text); }
+.line-romaji .mora-b { color: var(--accent); }
 
 /* the song's player, controls and notes: in the page flow on phones, a column of its own on wide screens */
 .doc-side { display: contents; }

@@ -1053,13 +1053,36 @@ function lineJp(ds, line, onWord, mark = null) {
   return jp;
 }
 
+// one romanized syllable: consonants + a vowel, or a syllable-final n (しんぱい -> shi n pa i); a doubled
+// consonant goes with the syllable after it (きって -> ki tte)
+const MORA = /n(?![aeiouy'])|[bcdfghjkmnprstvwyz]{0,3}[aeiou]/g;
+const ROMANIZED = /^(?:n(?![aeiouy])|[bcdfghjkmnprstvwyz]{0,3}[aeiou])+$/;
+
+/** The romaji line, its syllables in two alternating colours so a long run (hashiridashita) reads as
+ * ha·shi·ri·da·shi·ta when sung fast. English words and anything else stay as they are. */
+function romajiLine(line) {
+  if (!line.romaji) return null;
+  // words written in Latin letters in the lyrics themselves ("Whoa-oh", "rock") are English, not romaji
+  const latin = new Set((segText(line).toLowerCase().match(/[a-z]+/g) || []));
+  const parts = [];
+  let alt = false;
+  for (const piece of line.romaji.split(/(\s+)/)) {
+    if (piece !== piece.toLowerCase() || latin.has(piece) || !ROMANIZED.test(piece)) { parts.push(piece); continue; }
+    for (const m of piece.match(MORA)) {
+      parts.push(el("span", { class: alt ? "mora-b" : "mora-a" }, m));
+      alt = !alt;
+    }
+  }
+  return el("div", { class: "line-romaji" + (Array.isArray(line.wr) && line.wr.length ? " has-wr" : "") }, ...parts);
+}
+
 /** A lyric line as an example of word `wi` (word cards): the line word by word, its translation and the song,
  * which opens at that line. */
 function exampleLine(dsId, ds, doc, i, wi) {
   const line = doc.lines[i];
   return el("div", { class: "example show-gloss" },
     lineJp(ds, line, null, wi),
-    line.romaji ? el("div", { class: "line-romaji" + (Array.isArray(line.wr) && line.wr.length ? " has-wr" : "") }, line.romaji) : null,
+    romajiLine(line),
     line.tr ? el("div", { class: "line-tr" }, line.tr) : null,
     el("a", { class: "example-song", href: `${docRoute(dsId, doc)}?line=${i}` }, `${doc.title} ${fmtTime(line.start)} ▶`));
 }
@@ -1093,7 +1116,7 @@ function renderLine(doc, line, i) {
       timed ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
       ask, timed ? el("div", { class: "bm-row" }, pause, back, bm) : null),
     jp,
-    line.romaji ? el("div", { class: "line-romaji" + (wr.length ? " has-wr" : "") }, line.romaji) : null,
+    romajiLine(line),
     line.tr ? el("div", { class: "line-tr" }, line.tr) : null,
     ex, edit);
   // a tap always plays the line from its start (also the line being played); ⏸ / the space bar pause
