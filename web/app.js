@@ -992,8 +992,25 @@ function resolveEdited(ds, entry) {
 
 /** The lines of a song as shown on this device: its edit, else the data file's with this device's merges. */
 function songLines(dsId, ds, doc) {
-  const entry = lineEdits.get(songKey(dsId, doc));
+  const key = songKey(dsId, doc);
+  const entry = lineEdits.get(key);
+  if (entry && entry.base !== linesFingerprint(doc.lines) && editInData(entry, doc.lines)) {
+    lineEdits.delete(key);              // the data file has the edit now (`vm apply-edits`): this copy is done
+    saveLineEdits();
+    return mergedLines(dsId, doc);
+  }
   return entry ? resolveEdited(ds, entry) : mergedLines(dsId, doc);
+}
+
+/** Does the data file say what the edit says (text with readings, start, translation, line by line)? */
+function editInData(entry, lines) {
+  const said = (seg) => seg.map((s) => s[0] + (s[1] ? `(${s[1]})` : "")).join("");
+  return entry.lines.length === lines.length && entry.lines.every((e, k) => {
+    const l = lines[k];
+    return said(e.seg) === said(l.seg) && (e.tr || "") === (l.tr || "")
+      && (e.start === l.start || (typeof e.start === "number" && typeof l.start === "number"
+        && Math.abs(e.start - l.start) < 0.05));
+  });
 }
 
 /** The song's lines ready to edit: every line with `from` and `changed`. */

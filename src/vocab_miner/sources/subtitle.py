@@ -19,7 +19,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..model import TRANSCRIBED_TAG, UNTIMED_TAG, MediaRef, Utterance
+from ..model import TRANSCRIBED_TAG, UNTIMED_TAG, EditedLine, MediaRef, Utterance
 from ..textclean import clean
 from . import iter_files, read_text
 
@@ -297,6 +297,66 @@ class SubtitleSource:
             if side is not None and side.suffix.lower() == ".lrc":
                 _rewrite(side, lambda t: merge_lrc(t, groups, tolerance=0.35))    # matched by time like _attach_by_time
         return n
+
+    def rewrite_lines(self, doc_id: str, lines: Sequence[EditedLine], tr_lang: str) -> None:
+        """A doc's lines as edited in the web app (protocols.LineRewriter): its .lrc written anew (a .vtt / .srt
+        becomes an .lrc, the original kept as .bak), with the [ti]/[ar]/[re] tags it had; the translation file
+        <doc>.<tr_lang>.lrc too when translations are read from files. An untimed doc (<id>.txt) gets its text.
+        Readings cannot be kept: lyrics files have no place for them."""
+        file = next((f for d, f in iter_files(self.path, self.suffixes)
+                     if d == doc_id and not SIDECAR.search(f.stem)), None)
+        txt = self.path / f"{doc_id}.txt"
+        if file is None and txt.is_file():
+            _backup(txt)
+            txt.write_text("\n".join(ln.text for ln in lines) + "\n", encoding="utf-8")
+            return
+        if file is None:
+            raise FileNotFoundError(f"{self.source_id}: no file for {doc_id!r} in {self.path}")
+        if any(ln.start is None for ln in lines):
+            raise ValueError("some lines have no time; give every line a start time in the app")
+        meta = [ln for ln in read_text(file).split("\n") if file.suffix.lower() == ".lrc"
+                and LRC_META.match(ln.strip()) and not LRC_TIME.match(ln.strip())
+                and ln.strip()[1:3].lower() in ("ti", "ar", "re", "al", "by")]
+        lrc = file.with_suffix(".lrc")
+        if file != lrc:                                        # the .lrc takes the .vtt's place as the doc
+            bak = file.with_name(file.name + ".bak")
+            if bak.exists():
+                file.unlink()
+            else:
+                file.replace(bak)
+        else:
+            _backup(file)
+        lrc.write_text("\n".join(meta + _lrc_body(lines, lambda ln: ln.text)) + "\n", encoding="utf-8")
+        if self.translations.get(tr_lang) == "file":
+            side = lrc.with_name(f"{lrc.stem}.{tr_lang}.lrc")
+            _backup(side)
+            side.write_text("\n".join(_lrc_body([ln for ln in lines if ln.tr], lambda ln: ln.tr)) + "\n",
+                            encoding="utf-8")
+
+
+def _stamp(t: float) -> str:
+    m, s = divmod(max(t, 0.0), 60)
+    return f"[{int(m):02d}:{s:05.2f}]"
+
+
+def _lrc_body(lines: Sequence[EditedLine], text_of) -> list[str]:
+    """One stamped line each; a line that ends before the next starts is closed with an empty stamp (an .lrc
+    cannot hold an end later than the next start)."""
+    out = []
+    for k, ln in enumerate(lines):
+        if ln.start is None:
+            continue
+        out.append(f"{_stamp(ln.start)}{text_of(ln)}")
+        nxt = next((x.start for x in lines[k + 1:] if x.start is not None), None)
+        if ln.end is not None and (nxt is None or ln.end < nxt - 0.05):
+            out.append(_stamp(ln.end))
+    return out
+
+
+def _backup(path: Path) -> None:
+    backup = path.with_name(path.name + ".bak")
+    if path.exists() and not backup.exists():
+        shutil.copyfile(path, backup)
 
 
 def _rewrite(path: Path, edit) -> int:

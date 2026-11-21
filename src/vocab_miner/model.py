@@ -16,6 +16,17 @@ TRANSCRIBED_TAG = "transcribed"
 UNTIMED_TAG = "untimed"
 
 
+@dataclass
+class EditedLine:
+    """A line as edited in the web app, to be written back to the material (`vm apply-edits`)."""
+    text: str
+    pieces: list[tuple[str, str | None]] = field(default_factory=list)    # the text in pieces, with readings
+    start: float | None = None
+    end: float | None = None
+    tr: str = ""                  # translation in the language the app shows (zh-Hant)
+    changed: bool = False         # edited (beyond joining lines): its readings are the app's, not the material's
+
+
 @dataclass(frozen=True)
 class MediaRef:
     kind: Literal["youtube", "file"]

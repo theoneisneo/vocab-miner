@@ -681,33 +681,41 @@ def translate_import(
 
 @app.command(name="apply-edits")
 def apply_edits(
-    file: Annotated[Path, typer.Argument(help="Data file exported from the web app (編輯分句 → 匯出資料檔).")],
+    file: Annotated[Path, typer.Argument(help="Data file exported from the web app (編輯歌詞 → 匯出資料檔).")],
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Write without asking.")] = False,
     root: RootOpt = None,
 ):
-    """Write lines merged in the web app back to the lyrics files, then ingest those sources again."""
-    from .edits import apply_merges, read_merges
+    """Write lines edited in the web app (joined, split, text, readings, times, translations) back to the
+    lyrics files, then ingest those sources again."""
+    from .edits import apply_merges, apply_rewrites, read_line_edits, read_merges
 
     cfg = _config(root)
-    edits = read_merges(file)
-    if not edits:
-        typer.echo("no merged lines in this file")
+    rewrites = read_line_edits(file)
+    merges = read_merges(file, skip={(r.source_id, r.doc_id) for r in rewrites})
+    if not rewrites and not merges:
+        typer.echo("no edited lines in this file")
         return
-    for e in edits:
+    for r in rewrites:
+        typer.echo(f"{r.title}  ({r.source_id}/{r.doc_id}): {len(r.lines)} lines, {len(r.changes)} changed")
+        for before, after in r.changes:
+            typer.echo(f"  {' / '.join(before) or '(new)'}\n    -> {after}")
+    for e in merges:
         typer.echo(f"{e.title}  ({e.source_id}/{e.doc_id})")
         for g in e.groups:
             typer.echo("  + " + " / ".join(m.get("text", "") for m in g))
-    if not yes and not typer.confirm("Join these lines in the material files?"):
+    if not yes and not typer.confirm("Write these changes to the material files?"):
         raise typer.Exit(1)
     try:
-        changed = apply_merges(cfg, edits, log=typer.echo)
+        changed = apply_rewrites(cfg, rewrites, log=typer.echo) if rewrites else []
+        changed += [s for s in (apply_merges(cfg, merges, log=typer.echo) if merges else []) if s not in changed]
         for r in ingest(cfg, changed) if changed else []:
             typer.echo(f"{r.source_id}: {r.utterances} utterances in {r.docs} docs -> {r.path}")
     except (ConfigError, SourceError) as e:
         typer.secho(str(e), fg="red", err=True)
         raise typer.Exit(1)
     if changed:
-        typer.echo("Run `vm web` and import the new data file; the app then drops its own copy of these merges.")
+        typer.echo("Run `vm web` (or `vm update`) and import the new data file; the app then drops its own copy "
+                   "of these edits.")
 
 
 @app.command(name="yt-lyrics")

@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from .model import Token, Utterance, VocabEntry
+from .model import EditedLine, Token, Utterance, VocabEntry
 
 
 @runtime_checkable
@@ -22,6 +22,14 @@ class LineMerger(Protocol):
     the start times of consecutive lines of one doc; returns how many groups were merged."""
 
     def merge_lines(self, doc_id: str, groups: Sequence[Sequence[float]]) -> int: ...
+
+
+@runtime_checkable
+class LineRewriter(Protocol):
+    """Optional for a Source: replace a doc's lines with the ones edited in the web app (`vm apply-edits`): text,
+    readings where the material can hold them, times, and the translation in `tr_lang`."""
+
+    def rewrite_lines(self, doc_id: str, lines: Sequence[EditedLine], tr_lang: str) -> None: ...
 
 
 @runtime_checkable
