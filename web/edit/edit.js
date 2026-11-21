@@ -14,6 +14,15 @@
 import { buildJapanese, splitOkurigana, romanize, fixGeminates, HAS_KANJI, hira } from "../lib/ja.js";
 
 let api, panel, lines, i, snapshot, selected = null, trTimer = null;
+let pendingText = null;      // text typed in the box but not applied yet (重新分詞 / Enter applies it)
+
+/** Leaving the line with typed text not applied: ask first. True when it is fine to go on. */
+function leaveText() {
+  if (pendingText === null) return true;
+  if (!confirm("改的字還沒套用（要按「重新分詞」才會套用）。放棄這些修改？")) return false;
+  pendingText = null;
+  return true;
+}
 
 export function openLineEditor(appApi) {
   api = appApi;
@@ -30,6 +39,7 @@ function onKey(ev) {
 }
 
 function close() {
+  if (!leaveText()) return;
   flushTranslation();
   panel?.remove();
   panel = null;
@@ -44,6 +54,7 @@ function ensureCss() {
 }
 
 function goTo(k) {
+  if (panel && lines && !leaveText()) return;
   flushTranslation();
   lines = api.lines();
   i = Math.max(0, Math.min(k, lines.length - 1));
@@ -112,6 +123,7 @@ function editReading(u) {
 
 /** Two lines from one, the second starting at word u; its start is estimated by the length of the text. */
 function splitAt(u) {
+  if (!leaveText()) return;
   const line = lines[i];
   const cut = units(line)[u].segs[0];
   const segA = line.seg.slice(0, cut), segB = line.seg.slice(cut);
@@ -142,10 +154,11 @@ function splitAt(u) {
 async function retokenize(text) {
   const line = lines[i];
   text = text.trim();
-  if (!text || text === segText(line)) return;
+  if (!text || text === segText(line)) { pendingText = null; return render(); }
   const ds = api.ds;
   if ((ds.lang || "ja").split("-")[0] !== "ja") {
     Object.assign(line, { seg: [[text, null, null, null]], wr: [], romaji: "" });
+    pendingText = null;
     return commit();
   }
   const status = panel.querySelector(".edit-status");
@@ -154,6 +167,7 @@ async function retokenize(text) {
     const index = new Map(ds.words.map((w, k) => [w.key, k]));
     const [b] = await buildJapanese([text], ds.words, index, api.datasets());
     Object.assign(line, { seg: b.seg, wr: b.wr, romaji: b.romaji });
+    pendingText = null;
     commit();
   } catch (err) {
     if (status) status.textContent = "";
@@ -225,8 +239,19 @@ function render() {
       selected > 0 ? btn("✂ 從這裡拆成新的一句", () => splitAt(selected)) : null,
     ] : el("span", { class: "hint" }, "點一個詞：刪除、改讀音，或從那裡拆句。日文和拼音一起刪。"));
 
-  const textInput = el("input", { class: "edit-text", value: segText(line), "aria-label": "這句的日文" });
+  // typed text survives the other buttons (they re-draw the panel) until it is applied or given up
+  const textInput = el("input", { class: "edit-text", value: pendingText ?? segText(line), "aria-label": "這句的日文" });
+  const applyBtn = btn(pendingText !== null ? "重新分詞（未套用）" : "重新分詞", () => retokenize(textInput.value));
+  const showPending = () => {
+    applyBtn.classList.toggle("edit-pending", pendingText !== null);
+    applyBtn.textContent = pendingText !== null ? "重新分詞（未套用）" : "重新分詞";
+  };
+  textInput.addEventListener("input", () => {
+    pendingText = textInput.value.trim() === segText(line) ? null : textInput.value;
+    showPending();
+  });
   textInput.addEventListener("keydown", (ev) => { if (ev.key === "Enter") retokenize(textInput.value); });
+  showPending();
   const tr = el("textarea", { class: "edit-tr", rows: "2", "aria-label": "翻譯" });
   tr.value = line.tr || "";
   tr.addEventListener("input", () => {
@@ -252,17 +277,19 @@ function render() {
       el("button", { class: "icon-btn", "aria-label": "完成", onclick: close }, "✕")),
     tokens, actions,
     el("label", { class: "edit-label" }, "改字（按 Enter 或「重新分詞」，讀音和拼音會重新產生）"),
-    el("div", { class: "edit-row" }, textInput, btn("重新分詞", () => retokenize(textInput.value))),
+    el("div", { class: "edit-row" }, textInput, applyBtn),
     el("label", { class: "edit-label" }, "翻譯（自由修改）"), tr,
     typeof line.start === "number" || typeof line.end === "number"
       ? [timeRow("開始", "start"), timeRow("結束", "end"), el("div", { class: "edit-row" }, btn("▶ 播這句", () => api.playLine(i)))]
       : null,
     el("div", { class: "edit-row edit-foot" },
       i + 1 < lines.length ? btn("⊕ 和下一句合併", () => {
+        if (!leaveText()) return;
         lines.splice(i, 2, api.join(lines[i], lines[i + 1]));
         commit(false);
       }) : null,
       btn("刪除這句", () => {
+        if (!leaveText()) return;
         if (!confirm("刪除這一句？（按「復原本句」可以救回來）")) return;
         lines.splice(i, 1);
         api.save(lines);
@@ -271,6 +298,7 @@ function render() {
         render();
       }),
       btn("↺ 復原本句", () => {
+        pendingText = null;
         lines = structuredClone(snapshot);
         selected = null;
         commit(false);

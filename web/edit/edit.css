@@ -22,6 +22,7 @@
 .edit-row .small-chip, .edit-time .small-chip { margin-left: 0; }
 .edit-text { flex: 1 1 220px; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--bg); color: var(--text); }
+.edit-pending { background: var(--warn) !important; border-color: var(--warn) !important; color: #fff !important; }
 .edit-tr { width: 100%; box-sizing: border-box; font-size: 15px; padding: 8px 10px; border: 1px solid var(--line);
   border-radius: 8px; background: var(--bg); color: var(--text); font-family: inherit; }
 .edit-time { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
