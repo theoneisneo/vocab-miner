@@ -153,6 +153,9 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .hide-ruby .line-jp { line-height: 1.7; }
 .line-romaji { font-size: calc(14px * var(--fs, 1)); color: var(--muted); }
 .line-tr { font-size: calc(15px * var(--fs, 1)); }
+/* word-by-word highlight (experimental): in the line being sung, pieces not sung yet are faint */
+.karaoke .line.current .line-jp .p { opacity: .35; transition: opacity .12s; }
+.karaoke .line.current .line-jp .p.sung { opacity: 1; }
 /* romaji syllables in two alternating colours (ha·shi·ri·da·shi·ta) */
 .line-romaji .mora-a, .wr .mora-a { color: var(--text); }
 .line-romaji .mora-b, .wr .mora-b { color: var(--accent); }

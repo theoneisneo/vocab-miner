@@ -139,8 +139,8 @@ function splitAt(u) {
     mid = Math.round((line.start + (end - line.start) * lenA / Math.max(lenA + lenB, 1)) * 100) / 100;
   }
   const a = { ...line, seg: segA, wr: wrA, end: mid ?? line.end, changed: true };
-  const b = { ...line, id: `${line.id ?? "line"}.2`, seg: segB.map(([t, r, w, ti]) => [t, r, w,
-    ti === null || ti === undefined || tiCut === undefined ? ti : ti - tiCut]), wr: wrB,
+  const b = { ...line, id: `${line.id ?? "line"}.2`, seg: segB.map(([t, r, w, ti, ...rest]) => [t, r, w,
+    ti === null || ti === undefined || tiCut === undefined ? ti : ti - tiCut, ...rest]), wr: wrB,
   start: mid ?? line.start, tr: "", changed: true };
   delete b.ex;
   setRomaji(a);

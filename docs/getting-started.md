@@ -332,6 +332,10 @@ links = "data/song_links.tsv"
 search_links = { Spotify = "https://open.spotify.com/search/{artist}%20{title}" }
 ```
 
+**逐字跟隨（實驗性）**：「播放設定」裡打開「逐字跟隨」後，播放中那句唱到的字會亮起來。要用 Whisper 聽到的時間，
+在設定檔加上 `[web] word_times = "<資料夾>"`：`vm songs` / `vm update` 用 Whisper 處理過的歌，逐字時間存在歌詞資料夾的
+`.words/<影片ID>.words.json`（`vm new` 建立的專案已經設好）。沒有逐字時間的歌，網頁會依字數平均估算。
+
 ## 13. 沒有時間軸：用 Whisper 產生
 
 Whisper 是選配：沒有適合的顯示卡、或不想下載幾 GB 的檔案，可以跳過這節。`vm songs` / `vm update` 會改用

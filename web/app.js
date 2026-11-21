@@ -56,7 +56,8 @@ const prefs = Object.assign({ ruby: true, romaji: true, tr: true, gloss: false, 
   follow: true, loop: false, rate: 1, rates: [1, 0.75, 0.5, 0.25], ask: "auto", showDisplay: true, lessonOpen: true,
   loopGap: 0.5,      // 單句重複: seconds of silence before the line starts again (kept per device, like the rest)
   loopTail: 0,       // 單句重複: seconds played past the line's end, for a last sound that runs on
-  fontScale: 1 },    // size of the lines' text (per device: a laptop may want it bigger than a phone)
+  fontScale: 1,      // size of the lines' text (per device: a laptop may want it bigger than a phone)
+  karaoke: false },  // experimental: light the line being sung piece by piece (播放設定)
   safeJson(localStorageGet(PREFS_KEY)));
 // a song side by side (player and controls left, lines right): the same query as in app.css
 const WIDE_QUERY = "(min-width: 900px) and (orientation: landscape)";
@@ -825,6 +826,7 @@ function applyPrefClasses(root) {
   root.classList.toggle("show-ex", !!prefs.ex);
   root.classList.toggle("loop-on", !!prefs.loop);      // bookmarks are for practising several lines in a row
   root.style.setProperty("--fs", String(prefs.fontScale || 1));
+  root.classList.toggle("karaoke", !!prefs.karaoke);
 }
 
 const FONT_SCALES = [0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75];
@@ -905,7 +907,7 @@ function joinLines(ls) {
     let n = Array.isArray(l.wr) ? l.wr.length : 0;
     for (const s of l.seg) {
       if (s[3] === null || s[3] === undefined) { seg.push(s); continue; }
-      seg.push([s[0], s[1], s[2] ?? null, s[3] + base]);
+      seg.push([s[0], s[1], s[2] ?? null, s[3] + base, ...s.slice(4)]);     // s[4]: when it is sung
       n = Math.max(n, s[3] + 1);
     }
     for (let t = 0; t < n; t++) wr.push((l.wr || [])[t] || "");
@@ -987,7 +989,7 @@ function resolveEdited(ds, entry) {
     }
     return index.get(key);
   };
-  return entry.lines.map((l) => ({ ...l, seg: l.seg.map(([t, r, k, ti]) => [t, r, wi(k), ti ?? null]) }));
+  return entry.lines.map((l) => ({ ...l, seg: l.seg.map(([t, r, k, ti, ...rest]) => [t, r, wi(k), ti ?? null, ...rest]) }));
 }
 
 /** The lines of a song as shown on this device: its edit, else the data file's with this device's merges. */
@@ -1028,10 +1030,10 @@ function saveSongLines(lines) {
   const { dsId, ds, orig } = editCtx;
   const key = songKey(dsId, orig);
   const words = {};
-  const stored = lines.map((l) => ({ ...l, seg: l.seg.map(([t, r, w, ti]) => {
+  const stored = lines.map((l) => ({ ...l, seg: l.seg.map(([t, r, w, ti, ...rest]) => {
     const word = w === null || w === undefined ? null : ds.words[w];
     if (word) words[word.key] = word;
-    return [t, r, word ? word.key : null, ti ?? null];
+    return [t, r, word ? word.key : null, ti ?? null, ...rest];
   }) }));
   lineEdits.set(key, { base: linesFingerprint(orig.lines), lines: stored, words, dirty: true });
   if ((prefs.merges || {})[key]) setMerges(key, []);          // the older kind of merges are part of the edit now
@@ -1197,9 +1199,10 @@ function lineJp(ds, line, onWord, mark = null) {
   const spaced = SPACED_LANGS.has((ds.lang || "").split("-")[0]);
   let afterBlock = false;
   const alt = { on: false };                          // syllable colours keep alternating across the words
-  for (const s of line.seg) {
+  for (const [k, s] of line.seg.entries()) {
     const [t, ruby, wi = null, ti = null] = s;
-    const node = ruby ? el("ruby", {}, t, el("rt", {}, ruby)) : document.createTextNode(t);
+    // each piece in its own span (.p), so the word-by-word highlight can light it when it is sung
+    const node = el("span", { class: "p", "data-p": k }, ruby ? el("ruby", {}, t, el("rt", {}, ruby)) : t);
     const g = ti !== null ? `t${ti}` : wi !== null ? `w${wi}` : null;
     if (g === null) { text = null; group = undefined; jp.append(node); afterBlock = !/\s$/.test(t) && afterBlock; continue; }
     if (g !== group) {
@@ -1580,9 +1583,54 @@ function startTicker(doc) {
     }
     if (idx !== currentLine) setCurrent(idx);
     showPaused();                                    // also when paused in the video itself
+    if (prefs.karaoke) lightPieces(doc, t);
   }, 150);
 }
 function stopTicker() { clearInterval(ticker); ticker = null; }
+
+// ---------- word-by-word highlight (experimental, 播放設定) ----------
+// seg[k][4], when present, is the time a piece was heard (vm web, from speech recognition); the other pieces get
+// times spread between their neighbours by their length (readings count kana, not kanji).
+const pieceTimes = new WeakMap();
+const PIECE_CHARS = /[぀-ヿ㐀-鿿豈-﫿A-Za-z0-9]/g;
+
+function piecesOf(doc, i) {
+  const line = doc.lines[i];
+  if (pieceTimes.has(line)) return pieceTimes.get(line);
+  const n = line.seg.length;
+  const w = line.seg.map((s) => ((s[1] || s[0]).match(PIECE_CHARS) || []).length);
+  const next = doc.lines.slice(i + 1).find((l) => typeof l.start === "number");
+  const end = typeof line.end === "number" ? line.end : next ? next.start : line.start + 4;
+  // known anchors: the line's start, the heard pieces, and (when nothing was heard) 90% of the line
+  const t = line.seg.map((s) => (typeof s[4] === "number" ? s[4] : null));
+  const anchors = [[-1, line.start], ...t.flatMap((x, k) => (x === null ? [] : [[k, x]]))];
+  const last = anchors[anchors.length - 1];
+  anchors.push([n, Math.max(last[1], anchors.length > 1 ? end : line.start + (end - line.start) * 0.9)]);
+  for (let a = 0; a + 1 < anchors.length; a++) {
+    const [k0, t0] = anchors[a], [k1, t1] = anchors[a + 1];
+    // piece k0 starts at t0, k1 at t1: the pieces between start after the ones before them have been sung
+    const inner = [];
+    for (let k = k0 + 1; k < k1; k++) inner.push(k);
+    let acc = k0 >= 0 ? w[k0] : 0;
+    const sum = inner.reduce((s, k) => s + w[k], acc) || 1;
+    for (const k of inner) { t[k] = t0 + ((t1 - t0) * acc) / sum; acc += w[k]; }
+  }
+  pieceTimes.set(line, t);
+  return t;
+}
+
+let litLine = null;
+function lightPieces(doc, t) {
+  const li = currentLine >= 0 ? document.querySelector(`.line[data-i="${currentLine}"]`) : null;
+  if (litLine && litLine !== li) litLine.querySelectorAll(".p.sung").forEach((p) => p.classList.remove("sung"));
+  litLine = li;
+  if (!li || typeof doc.lines[currentLine]?.start !== "number") return;
+  const times = piecesOf(doc, currentLine);
+  for (const p of li.querySelectorAll(".line-jp .p")) {
+    const k = Number(p.dataset.p);
+    p.classList.toggle("sung", times[k] !== null && times[k] <= t + 0.05);
+  }
+}
 
 function setCurrent(i) {
   document.querySelector(".line.current")?.classList.remove("current");
@@ -1752,7 +1800,9 @@ function openRateSettings() {
     values.map((v) => el("option", { value: String(v), selected: v === (prefs[key] ?? 0) }, `${v} 秒`)));
   const gap = seconds("loopGap", [0, 0.25, 0.5, 0.75, 1, 1.5, 2, 3]);
   const tail = seconds("loopTail", [0, 0.1, 0.2, 0.3, 0.4, 0.5]);
+  const karaoke = el("input", { type: "checkbox", checked: !!prefs.karaoke });
   const save = el("button", { class: "primary", onclick: () => {
+    prefs.karaoke = karaoke.checked;
     const chosen = boxes.map((b) => b.querySelector("input")).filter((i) => i.checked).map((i) => Number(i.value));
     if (!chosen.length) return toast("至少要選一個速度");
     prefs.rates = chosen;
@@ -1773,6 +1823,10 @@ function openRateSettings() {
     el("label", { class: "setting-row" }, "每次重播前停", gap),
     el("label", { class: "setting-row" }, "句尾多播", tail),
     el("p", { class: "hint" }, "最後一個字被切掉時調高「句尾多播」。設定存在這台裝置上，手機和電腦可以各設各的。"),
+    el("h3", { class: "setting-head" }, "實驗性功能"),
+    el("label", { class: "setting-row" }, karaoke, " 逐字跟隨"),
+    el("p", { class: "hint" }, "播放中的那句，唱到的字會亮起來，還沒唱到的比較淡。有 AI 聽過的歌會照它聽到的時間，"
+      + "其他歌依字數平均估算，可能會有快慢誤差。"),
     save);
 }
 

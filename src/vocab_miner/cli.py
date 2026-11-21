@@ -214,6 +214,16 @@ def web(
                 d["titleReading"] = reading
             if romanizer and getattr(romanizer, "romanize_tokens", None):
                 d["titleRomaji"] = romanizer.romanize_tokens(toks)
+    if wcfg.get("word_times"):           # when each piece is sung (word-by-word highlight): [web] word_times = folder
+        from .wordtimes import add_piece_times, read_words
+        folder = cfg.resolve(wcfg["word_times"])
+        songs_timed = 0
+        for d in data["docs"]:
+            media = d.get("media") or {}
+            path = folder / f"{media.get('uri')}.words.json"
+            if media.get("kind") == "youtube" and path.is_file():
+                songs_timed += add_piece_times(d["lines"], read_words(path)) > 0
+        typer.echo(f"word timings: {songs_timed} songs")
     if wcfg.get("links") or wcfg.get("search_links"):    # buttons to other places: a table and/or search links
         from .links import add_links, read_links
         table = read_links(cfg.resolve(wcfg["links"]), aliases) if wcfg.get("links") else {}

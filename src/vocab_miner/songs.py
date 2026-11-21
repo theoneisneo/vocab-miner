@@ -160,6 +160,8 @@ def run(playlists_file: Path, lang: str, out: Path, list_dir: Path, whisper: boo
                 log(f"[{n}/{len(need)}] {r['title']}: no audio ({str(e).splitlines()[0]})")
                 continue
             words, heard = tr.transcribe(w, audio, lang)
+            from .wordtimes import write_words  # kept for the word-by-word highlight ([web] word_times)
+            write_words(out / ".words" / f"{r['id']}.words.json", words)
             text = out / f"{r['id']}.txt"
             if text.is_file():
                 lines, transcribed = tr.align(tr.read_lyrics(text), words), False

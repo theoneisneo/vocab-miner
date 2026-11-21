@@ -102,7 +102,7 @@ def new_project(base: Config, name: str, urls: Sequence[str], artist: str = "", 
              "list_dir": rebase(base, base.get("web", {}).get("playlist_dir", "data/raw/youtube"), root),
              "translations": list(translations)}
     web = {"title": title or artist or name, "playlists": "playlists.txt", "playlist_dir": songs["list_dir"],
-           "file_name": f"{name}.json"}
+           "file_name": f"{name}.json", "word_times": f"{rel_raw}/.words"}
     if copy_to := base.get("web", {}).get("copy_to"):
         web["copy_to"] = [str(base.resolve(c).as_posix()) for c in copy_to]
     if artist:
