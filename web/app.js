@@ -1110,8 +1110,8 @@ function renderLine(doc, line, i) {
   const ask = el("button", { class: "ask-btn", "aria-label": "問 AI 這句的翻譯", title: "問 AI 這句的翻譯" }, "?");
   ask.addEventListener("click", (ev) => { ev.stopPropagation(); askAI(linePrompt(doc, i)); });
   // pronunciation: only the line and its romaji, copied; you write what you hear below it in the AI app
-  const say = line.romaji ? el("button", { class: "ask-btn", "aria-label": "複製歌詞和拼音，問 AI 發音",
-    title: "複製歌詞和拼音，問 AI 發音" }) : null;
+  const say = line.romaji ? el("button", { class: "ask-btn", "aria-label": "複製歌詞+拼音",
+    title: "複製歌詞+拼音" }) : null;
   if (say) say.innerHTML = COPY_ICON;
   if (say) say.addEventListener("click", async (ev) => {
     ev.stopPropagation();
