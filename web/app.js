@@ -1028,6 +1028,7 @@ function lineJp(ds, line, onWord, mark = null) {
   // languages written with spaces: a token right after another one (", 's n't") hugs it in word-by-word mode
   const spaced = SPACED_LANGS.has((ds.lang || "").split("-")[0]);
   let afterBlock = false;
+  const alt = { on: false };                          // syllable colours keep alternating across the words
   for (const s of line.seg) {
     const [t, ruby, wi = null, ti = null] = s;
     const node = ruby ? el("ruby", {}, t, el("rt", {}, ruby)) : document.createTextNode(t);
@@ -1043,7 +1044,10 @@ function lineJp(ds, line, onWord, mark = null) {
       const block = el("span", { class: cls, "data-w": wi === null ? null : wi });
       text = el("span", { class: "wt" });
       block.append(text);
-      if (ti !== null && wr[ti]) block.append(el("span", { class: "wr" }, wr[ti]));
+      if (ti !== null && wr[ti]) {
+        // a word written in Latin letters (English) keeps its romaji plain
+        block.append(el("span", { class: "wr" }, .../[A-Za-z]/.test(t) ? [wr[ti]] : moraParts(wr[ti], alt)));
+      }
       block.append(el("span", { class: "gl" }, w ? shortGloss(w) : ""));
       if (w && onWord) block.addEventListener("click", (ev) => { ev.stopPropagation(); onWord(w, block); });
       jp.append(block);
@@ -1058,6 +1062,17 @@ function lineJp(ds, line, onWord, mark = null) {
 const MORA = /n(?![aeiouy'])|[bcdfghjkmnprstvwyz]{0,3}[aeiou]/g;
 const ROMANIZED = /^(?:n(?![aeiouy])|[bcdfghjkmnprstvwyz]{0,3}[aeiou])+$/;
 
+/** Romaji as syllable spans in alternating colours (alt.on carries the colour on to the next call); text that is
+ * not plain romaji (capitals, punctuation, English) comes back as it is. */
+function moraParts(text, alt) {
+  if (text !== text.toLowerCase() || !ROMANIZED.test(text)) return [text];
+  return text.match(MORA).map((m) => {
+    const span = el("span", { class: alt.on ? "mora-b" : "mora-a" }, m);
+    alt.on = !alt.on;
+    return span;
+  });
+}
+
 /** The romaji line, its syllables in two alternating colours so a long run (hashiridashita) reads as
  * ha·shi·ri·da·shi·ta when sung fast. English words and anything else stay as they are. */
 function romajiLine(line) {
@@ -1065,13 +1080,10 @@ function romajiLine(line) {
   // words written in Latin letters in the lyrics themselves ("Whoa-oh", "rock") are English, not romaji
   const latin = new Set((segText(line).toLowerCase().match(/[a-z]+/g) || []));
   const parts = [];
-  let alt = false;
+  const alt = { on: false };
   for (const piece of line.romaji.split(/(\s+)/)) {
-    if (piece !== piece.toLowerCase() || latin.has(piece) || !ROMANIZED.test(piece)) { parts.push(piece); continue; }
-    for (const m of piece.match(MORA)) {
-      parts.push(el("span", { class: alt ? "mora-b" : "mora-a" }, m));
-      alt = !alt;
-    }
+    if (latin.has(piece)) parts.push(piece);
+    else parts.push(...moraParts(piece, alt));
   }
   return el("div", { class: "line-romaji" + (Array.isArray(line.wr) && line.wr.length ? " has-wr" : "") }, ...parts);
 }
