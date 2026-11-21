@@ -657,8 +657,9 @@ let renderSeq = 0;   // a newer render wins when two overlap (renderDoc waits fo
 async function renderDoc(dsId, ds, orig, startAt = null) {
   const seq = ++renderSeq;
   data = ds;
-  // the song as shown: lines merged on this device (see "merged lines"); a copy, so merging changes only `lines`
-  const doc = Object.assign({}, orig, { lines: mergedLines(dsId, orig) });
+  // the song as shown: its lines as edited or merged on this device (see "edited lines"); a copy, so editing
+  // changes only `lines`
+  const doc = Object.assign({}, orig, { lines: songLines(dsId, ds, orig) });
   $("#title").textContent = doc.title;
   $("#back").hidden = false;
   const favBtn = $("#fav-btn");
@@ -930,32 +931,141 @@ function setMerges(key, groups) {
   savePrefs();
 }
 
-const unexported = (key) => ((prefs.merges || {})[key] || []).length > 0
-  && JSON.stringify(prefs.merges[key]) !== (prefs.mergesExported || {})[key];
+const unexported = (key) => !!lineEdits.get(key)?.dirty || (((prefs.merges || {})[key] || []).length > 0
+  && JSON.stringify(prefs.merges[key]) !== (prefs.mergesExported || {})[key]);
+
+// ---------- edited lines: a song's lines as changed on this device (✎: web/edit/) ----------
+// lineEdits = {song: {base, lines, words, dirty}}: once a song is edited (text, readings, splits, times,
+// translations), its whole list of lines is kept here and shown instead of the data file's. Each line has `from`
+// (the data file's lines it came from: [{id, start, text}]) and `changed` (anything but joining them).
+// Words are stored by key with a copy of each word, so the edit still works after the data file is regenerated;
+// `base` fingerprints the data file's lines the edit was made on, to say so when they changed.
+let lineEdits = new Map();
+const saveLineEdits = () => kvSet("lineEdits", Object.fromEntries(lineEdits)).catch(() => toast("無法儲存修改"));
+
+function linesFingerprint(lines) {
+  const s = lines.map((l) => `${l.start}|${segText(l)}`).join("\n");
+  let h = 0;
+  for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) | 0;
+  return `${lines.length}:${h}`;
+}
+const fromOf = (l) => l.from || l.merged || [{ id: l.id ?? null, start: l.start, text: segText(l) }];
+/** How many data-file lines a shown line joins, when ✂ can put them back (null otherwise). */
+function mergedParts(line) {
+  if (line.from) return line.from.length > 1 && !line.changed ? line.from.length : null;
+  return localGroup(line)?.length || null;
+}
+
+/** A stored edit -> lines whose seg points into ds.words (words the data file lacks are added, in memory). */
+function resolveEdited(ds, entry) {
+  const index = new Map(ds.words.map((w, k) => [w.key, k]));
+  const wi = (key) => {
+    if (key === null || key === undefined) return null;
+    if (!index.has(key)) {
+      const w = (entry.words || {})[key];
+      if (!w) return null;
+      index.set(key, ds.words.length);
+      ds.words.push({ ...w });
+    }
+    return index.get(key);
+  };
+  return entry.lines.map((l) => ({ ...l, seg: l.seg.map(([t, r, k, ti]) => [t, r, wi(k), ti ?? null]) }));
+}
+
+/** The lines of a song as shown on this device: its edit, else the data file's with this device's merges. */
+function songLines(dsId, ds, doc) {
+  const entry = lineEdits.get(songKey(dsId, doc));
+  return entry ? resolveEdited(ds, entry) : mergedLines(dsId, doc);
+}
+
+/** The song's lines ready to edit: every line with `from` and `changed`. */
+function editableLines() {
+  const { dsId, ds, orig } = editCtx;
+  return songLines(dsId, ds, orig).map((l) => {
+    const c = { ...l, from: fromOf(l), changed: !!l.changed };
+    delete c.merged;
+    return c;
+  });
+}
+
+/** Keep an edited list of lines for the song on screen and show it. */
+function saveSongLines(lines) {
+  const { dsId, ds, orig } = editCtx;
+  const key = songKey(dsId, orig);
+  const words = {};
+  const stored = lines.map((l) => ({ ...l, seg: l.seg.map(([t, r, w, ti]) => {
+    const word = w === null || w === undefined ? null : ds.words[w];
+    if (word) words[word.key] = word;
+    return [t, r, word ? word.key : null, ti ?? null];
+  }) }));
+  lineEdits.set(key, { base: linesFingerprint(orig.lines), lines: stored, words, dirty: true });
+  if ((prefs.merges || {})[key]) setMerges(key, []);          // the older kind of merges are part of the edit now
+  saveLineEdits();
+  refreshLines();
+}
+
+function discardSongEdits() {
+  const { dsId, orig } = editCtx;
+  if (!confirm("捨棄這首歌在這台裝置上的所有修改（合併、拆句、改字、時間、翻譯）？")) return;
+  lineEdits.delete(songKey(dsId, orig));
+  setMerges(songKey(dsId, orig), []);
+  saveLineEdits();
+  refreshLines();
+}
+
+/** Two lines as one: text, readings, translations joined, timed first start -> last end. */
+function joinEdited(a, b) {
+  const j = joinLines([a, b]);
+  delete j.merged;
+  // a line split and joined again comes from the same data-file line twice: list it once
+  const from = [...fromOf(a), ...fromOf(b)].filter((f, k, all) =>
+    all.findIndex((g) => (f.id && g.id === f.id) || (!f.id && sameTime(g.start, f.start))) === k);
+  return Object.assign(j, { from, changed: !!(a.changed || b.changed) });
+}
 
 function mergeWithNext(i) {
-  const { dsId, orig, doc } = editCtx;
-  const a = lineStarts(doc.lines[i]), b = lineStarts(doc.lines[i + 1] || {});
-  if (![...a, ...b].every((t) => typeof t === "number")) return toast("沒有時間的句子不能合併");
-  const key = songKey(dsId, orig);
-  const groups = ((prefs.merges || {})[key] || []).filter((g) => !sameTime(g[0], a[0]) && !sameTime(g[0], b[0]));
-  setMerges(key, [...groups, [...a, ...b]]);
-  refreshLines();
+  const lines = editableLines();
+  if (!lines[i + 1]) return;
+  lines.splice(i, 2, joinEdited(lines[i], lines[i + 1]));
+  saveSongLines(lines);
 }
 
+/** Put a joined line back as the data file's lines it came from. */
 function splitMerged(i) {
-  const { dsId, orig, doc } = editCtx;
-  const key = songKey(dsId, orig);
-  setMerges(key, ((prefs.merges || {})[key] || []).filter((g) => !sameTime(g[0], doc.lines[i].start)));
-  refreshLines();
+  const { orig } = editCtx;
+  const lines = editableLines();
+  const parts = lines[i].from.map((f) => orig.lines.find((l) => (f.id && l.id === f.id) || sameTime(l.start, f.start)));
+  if (parts.some((p) => !p)) return toast("資料檔裡找不到原本的句子，請用 ✎ 編輯拆開");
+  lines.splice(i, 1, ...parts.map((p) => ({ ...p, from: fromOf(p), changed: false })));
+  saveSongLines(lines);
 }
 
-/** Re-draw the lines after a merge or split, without restarting the player. */
+/** ✎: the line editor (optional feature in web/edit/, loaded when first used). */
+async function openLineEditor(i) {
+  try {
+    (await import("./edit/edit.js")).openLineEditor({
+      el, toast, dialog, i,
+      datasets: () => datasets.values(),
+      get ds() { return editCtx.ds; },
+      lines: editableLines,
+      save: saveSongLines,
+      join: joinEdited,
+      time: () => (player && player.ready() ? player.time() : null),
+      playLine: (k) => playLine(editCtx.doc, k),
+      spaced: SPACED_LANGS.has((editCtx.ds.lang || "").split("-")[0]),
+    });
+  } catch (err) {
+    dialog("無法開啟編輯", el("p", {}, "需要網路才能第一次載入。"), el("p", { class: "hint" }, String(err.message || err)));
+  }
+}
+
+/** Re-draw the lines after a change, without restarting the player. */
 function refreshLines() {
-  const { dsId, orig, doc, ol } = editCtx;
-  doc.lines = mergedLines(dsId, orig);             // the player and ticker read doc.lines
+  const { dsId, ds, orig, doc, ol } = editCtx;
+  doc.lines = songLines(dsId, ds, orig);           // the player and ticker read doc.lines
   loopLine = -1;
   ol.replaceChildren(...doc.lines.map((line, i) => renderLine(doc, line, i)));
+  if (currentLine >= 0) ol.querySelector(`.line[data-i="${currentLine}"]`)?.classList.add("current");
   showEditing();
   showBookmark();
 }
@@ -967,30 +1077,50 @@ function showEditing() {
   root.classList.toggle("editing-lines", editingLines);
   root.querySelector(".edit-bar")?.remove();
   if (editingLines) {
+    const entry = lineEdits.get(songKey(dsId, orig));
+    const stale = entry && entry.base !== linesFingerprint(orig.lines);
     root.querySelector(".stick").append(el("div", { class: "edit-bar" },
-      el("span", {}, "編輯分句：⊕ 把一句和下一句合併，✂ 拆回原本的句子。修改存在這台裝置上。"),
+      el("span", {}, "編輯歌詞：✎ 改字、刪詞、拆句、調時間和翻譯，⊕ 和下一句合併。修改存在這台裝置上。"),
+      stale ? el("span", { class: "unsaved" }, "資料檔更新過：這首顯示的是你根據舊版做的修改。") : null,
       el("button", { class: "chip small-chip", onclick: () => exportEdited(dsId) }, "匯出資料檔"),
+      entry || (prefs.merges || {})[songKey(dsId, orig)]
+        ? el("button", { class: "chip small-chip", onclick: discardSongEdits }, "捨棄這首的修改") : null,
       el("button", { class: "chip small-chip", onclick: () => { editingLines = false; showEditing(); } }, "完成")));
   }
   const dirty = unexported(songKey(dsId, orig));
   $("#title").replaceChildren(orig.title, dirty
-    ? el("span", { class: "unsaved", title: "分句有修改，還沒匯出（選單 → 編輯分句 → 匯出資料檔）" }, " *") : "");
+    ? el("span", { class: "unsaved", title: "歌詞有修改，還沒匯出（選單 → 編輯歌詞 → 匯出資料檔）" }, " *") : "");
 }
 
-/** Download the data file with this device's merges, to re-import elsewhere or for `vm apply-edits`. */
+/** A shown line as written to an exported data file: joined lines keep `merged` (what `vm apply-edits` reads);
+ * otherwise changed lines get `edited` and `orig` (the data file's lines they came from). */
+function exportLine(l) {
+  const out = { ...l };
+  delete out.from;
+  delete out.changed;
+  if (l.from && l.changed) Object.assign(out, { edited: true, orig: l.from });
+  else if (l.from && l.from.length > 1) out.merged = l.from;
+  return out;
+}
+
+/** Download the data file with this device's edits, to re-import elsewhere or for `vm apply-edits`. */
 function exportEdited(dsId) {
   const ds = datasets.get(dsId);
-  const out = Object.assign({}, ds, { docs: ds.docs.map((d) => Object.assign({}, d, { lines: mergedLines(dsId, d) })) });
-  const n = out.docs.reduce((a, d) => a + d.lines.filter((l) => l.merged).length, 0);
+  const out = Object.assign({}, ds, { docs: ds.docs.map((d) => Object.assign({}, d,
+    { lines: songLines(dsId, ds, d).map(exportLine) })) });
+  out.words = ds.words;                               // after songLines: words of edited lines are in it now
+  const n = out.docs.reduce((a, d) => a + d.lines.filter((l) => l.merged || l.edited).length, 0);
   download(`${dsId}.json`, JSON.stringify(out));
   prefs.mergesExported = prefs.mergesExported || {};
   for (const d of ds.docs) {
     const key = songKey(dsId, d);
     if ((prefs.merges || {})[key]) prefs.mergesExported[key] = JSON.stringify(prefs.merges[key]);
+    if (lineEdits.has(key)) lineEdits.get(key).dirty = false;
   }
   savePrefs();
+  saveLineEdits();
   showEditing();
-  toast(`已匯出「${dsId}.json」（${n} 個合併的句子）。電腦上執行 vm apply-edits 可以寫回原本的歌詞檔`);
+  toast(`已匯出「${dsId}.json」（${n} 句有修改）。可以匯入其他裝置`);
 }
 
 function showBookmark() {
@@ -1132,12 +1262,15 @@ function renderLine(doc, line, i) {
     title: "回到書籤那句（B 鍵）" }, "↩") : null;
   if (back) back.addEventListener("click", (ev) => { ev.stopPropagation(); backToBookmark(); });
   // shown only while editing lines (menu → 編輯分句)
-  const edit = timed ? el("div", { class: "line-edit" },
+  const parts = mergedParts(line);
+  const edit = el("div", { class: "line-edit" },
+    el("button", { class: "chip small-chip", onclick: (ev) => { ev.stopPropagation(); openLineEditor(i); } }, "✎ 編輯"),
     i + 1 < doc.lines.length ? el("button", { class: "chip small-chip", onclick: (ev) => { ev.stopPropagation(); mergeWithNext(i); } },
       "⊕ 與下一句合併") : null,
-    localGroup(line) ? el("button", { class: "chip small-chip", onclick: (ev) => { ev.stopPropagation(); splitMerged(i); } },
-      `✂ 拆回 ${localGroup(line).length} 句`) : null) : null;
-  const li = el("li", { class: "line" + (localGroup(line) ? " merged" : ""), "data-i": i },
+    parts ? el("button", { class: "chip small-chip", onclick: (ev) => { ev.stopPropagation(); splitMerged(i); } },
+      `✂ 拆回 ${parts} 句`) : null,
+    line.changed ? el("span", { class: "line-edited" }, "已修改") : null);
+  const li = el("li", { class: "line" + (parts || line.changed ? " merged" : ""), "data-i": i },
     el("div", { class: "line-side" },
       timed ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
       say, ask, timed ? el("div", { class: "bm-row" }, pause, back, bm) : null),
@@ -1738,6 +1871,7 @@ $("#known-file").addEventListener("change", async (ev) => {
     known = new Map(Object.entries((await kvGet("known")) || {}));
     lookups = new Map(Object.entries((await kvGet("lookups")) || {}));
     favorites = new Map(Object.entries((await kvGet("favorites")) || {}));
+    lineEdits = new Map(Object.entries((await kvGet("lineEdits")) || {}));
     kvDel("layouts").catch(() => {});      // the old "arrange all songs" order is replaced by favourites
   } catch (err) {
     toast(`無法讀取本機資料：${err.message}`);

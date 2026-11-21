@@ -12,10 +12,10 @@
  */
 
 const DATASET_TITLE = "我建立的歌曲";
-const KUROMOJI = "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js";
-const KUROMOJI_DICT = "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/";
 const TAP_LAG = 0.15;          // people tap a little after the line starts
 const LANGS = { ja: "日文" };  // a tokenizer per language; others can be added here
+
+import { buildJapanese } from "../lib/ja.js";
 
 let api, panel, state;
 
@@ -268,156 +268,6 @@ function stepTranslate() {
 
 // ---------- tokenizing (Japanese) ----------
 
-let tokenizerPromise = null;
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (window.kuromoji) return resolve();
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = () => reject(new Error("無法下載分詞器（需要網路）"));
-    document.head.append(s);
-  });
-}
-
-function japaneseTokenizer() {
-  if (!tokenizerPromise) {
-    tokenizerPromise = loadScript(KUROMOJI).then(() => new Promise((resolve, reject) => {
-      window.kuromoji.builder({ dicPath: KUROMOJI_DICT }).build((err, t) => (err ? reject(err) : resolve(t)));
-    })).catch((err) => { tokenizerPromise = null; throw err; });
-  }
-  return tokenizerPromise;
-}
-
-const KANA = /^[ぁ-ゖァ-ヺー]+$/;
-const HAS_KANJI = /[㐀-鿿豈-﫿々〆ヶ]/;
-const hira = (s) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
-
-/** IPADIC part of speech -> Universal POS (same roles the page colours). */
-function upos(t, prev) {
-  const p1 = t.pos, p2 = t.pos_detail_1;
-  if (p1 === "名詞") {
-    if (p2 === "固有名詞") return "PROPN";
-    if (p2 === "数") return "NUM";
-    if (p2 === "代名詞") return "PRON";
-    if (p2 === "形容動詞語幹") return "ADJ";
-    return "NOUN";
-  }
-  if (p1 === "動詞") return p2 === "非自立" && prev && /^[てで]$/.test(prev.surface_form) ? "AUX" : "VERB";
-  if (p1 === "形容詞") return p2 === "非自立" && prev && /^[てで]$/.test(prev.surface_form) ? "AUX" : "ADJ";
-  if (p1 === "助詞") return p2 === "接続助詞" ? "SCONJ" : p2 === "終助詞" ? "PART" : "ADP";
-  return { 助動詞: "AUX", 副詞: "ADV", 連体詞: "DET", 接続詞: "CCONJ", 感動詞: "INTJ", 記号: "PUNCT",
-    接頭詞: "NOUN", フィラー: "INTJ" }[p1] || "X";
-}
-
-/** 食べ/たべ -> [[食,た],[べ,null]] : ruby only over the kanji. */
-function splitOkurigana(surface, reading) {
-  const runs = surface.match(/[ぁ-ゖァ-ヺー]+|[^ぁ-ゖァ-ヺー]+/g) || [surface];
-  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp("^" + runs.map((r) => (KANA.test(r) ? `(${esc(hira(r))})` : "(.+?)")).join("") + "$");
-  const m = hira(reading).match(pattern);
-  if (!m) return [[surface, reading]];
-  return runs.map((r, k) => [r, HAS_KANJI.test(r) ? m[k + 1] : null]);
-}
-
-// Hepburn, same rules as the Python romanizer: shi/chi/tsu/fu/ji, n' before vowels, long vowels as written
-const BLOCK = ("a a i i u u e e o o ka ga ki gi ku gu ke ge ko go sa za shi ji su zu se ze so zo ta da chi ji - tsu zu te de "
-  + "to do na ni nu ne no ha ba pa hi bi pi fu bu pu he be pe ho bo po ma mi mu me mo ya ya yu yu yo yo "
-  + "ra ri ru re ro wa wa i e o n vu ka ke").split(" ");
-const MONO = Object.fromEntries(BLOCK.map((r, i) => [String.fromCharCode(0x3041 + i), r]).filter(([, r]) => r !== "-"));
-const SMALL = new Set("ぁぃぅぇぉゃゅょゎ");
-
-function romanize(reading) {
-  const s = hira(reading);
-  let out = "", geminate = false, afterN = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i], nx = s[i + 1];
-    let syl;
-    if (c === "っ") { geminate = true; continue; }
-    if (c === "ー") { syl = (out.match(/[aeiou](?=[^aeiou]*$)/) || [""])[0]; }
-    else if (MONO[c] && nx && SMALL.has(nx) && "ゃゅょ".includes(nx) && MONO[c].endsWith("i") && MONO[c].length > 1) {
-      const b = MONO[c].slice(0, -1);
-      syl = (["sh", "ch", "j"].includes(b) ? b : b + "y") + MONO[nx].slice(1);
-      i++;
-    } else if (MONO[c] && nx && "ぁぃぅぇぉ".includes(nx) && !"あえお".includes(c)) {
-      const v = MONO[nx];                                               // ティ ti, ファ fa, ウィ wi, イェ ye
-      syl = c === "う" ? "w" + v : c === "い" ? "y" + v : MONO[c].replace(/[aeiou]+$/, "") + v;
-      i++;
-    } else syl = MONO[c] ?? c;
-    if (geminate && syl && !"aeioun'".includes(syl[0])) syl = (syl.startsWith("ch") ? "t" : syl[0]) + syl;
-    geminate = false;
-    if (afterN && /^[aiueoy]/.test(syl)) out += "'";
-    afterN = c === "ん";
-    out += syl;
-  }
-  return geminate ? out + "'" : out;
-}
-
-/** Words already known from other data files, so created songs reuse their glosses and "known" marks. */
-function existingWords() {
-  // most specific first: same spelling, reading and part of speech (ない the auxiliary is not ない the adjective)
-  const exact = new Map(), byLemmaReading = new Map(), byLemma = new Map();
-  const addUnique = (map, k, w) => { if (!map.has(k)) map.set(k, w); else if (map.get(k) !== w) map.set(k, null); };
-  for (const ds of api.datasets.values()) {
-    for (const w of ds.words) {
-      if (!exact.has(`${w.lemma}|${w.reading}|${w.upos}`)) exact.set(`${w.lemma}|${w.reading}|${w.upos}`, w);
-      addUnique(byLemmaReading, `${w.lemma}|${w.reading}`, w);
-      addUnique(byLemma, w.lemma, w);
-    }
-  }
-  return (lemma, reading, upos) => exact.get(`${lemma}|${reading}|${upos}`)
-    || byLemmaReading.get(`${lemma}|${reading}`) || byLemma.get(lemma) || null;
-}
-
-async function buildJapanese(words, wordIndex) {
-  const tokenizer = await japaneseTokenizer();
-  const lookup = existingWords();
-  return state.lines.map((text) => {
-    const toks = tokenizer.tokenize(text);
-    const seg = [], wr = [];
-    toks.forEach((t, ti) => {
-      const prev = toks[ti - 1];
-      const u = upos(t, prev);
-      const surface = t.surface_form;
-      const reading = t.reading && t.reading !== "*" ? hira(t.reading) : (KANA.test(surface) ? hira(surface) : "");
-      let lemma = t.basic_form && t.basic_form !== "*" ? t.basic_form : surface;
-      let lemmaReading = surface === lemma ? reading : "";
-      if (u === "AUX" && (t.pos === "動詞" || t.pos === "形容詞")) {     // 〜ている, 〜てしまう ... as grammar patterns
-        const kana = KANA.test(lemma) ? hira(lemma) : lemmaReading || hira(lemma);
-        lemma = `〜て${kana}`;
-        lemmaReading = `て${kana}`;
-      }
-      let wi = null;
-      if (u !== "PUNCT" && /[ぁ-ゖァ-ヺー㐀-鿿豈-﫿]/.test(lemma)) {
-        const found = lookup(lemma, lemmaReading || reading, u);
-        const key = found ? found.key : `${lemma}\t${lemmaReading}`;
-        if (!wordIndex.has(key)) {
-          wordIndex.set(key, words.length);
-          words.push(found ? { ...found } : {
-            key, lemma, reading: lemmaReading || "", romaji: lemmaReading ? romanize(lemmaReading) : "",
-            pos: t.pos, upos: u, short: "", zh: "", en: "", grammar: ["ADP", "PART", "SCONJ", "AUX"].includes(u),
-          });
-        }
-        wi = wordIndex.get(key);
-      }
-      const particle = u === "ADP" || u === "PART" ? { は: "wa", へ: "e", を: "o" }[surface] : null;
-      wr.push(u === "PUNCT" || !surface.trim() ? "" : particle || (reading ? romanize(reading) : surface));
-      if (reading && HAS_KANJI.test(surface)) {
-        for (const [piece, ruby] of splitOkurigana(surface, reading)) seg.push([piece, ruby, wi, ti]);
-      } else seg.push([surface, null, wi, ti]);
-    });
-    for (let k = 0; k < wr.length; k++) {                               // small tsu at the end of a token
-      if (wr[k].endsWith("'")) {
-        const nxt = wr.slice(k + 1).find((x) => x) || "";
-        if (/^[b-df-hj-np-tv-z]/.test(nxt)) wr[k] = wr[k].slice(0, -1) + (nxt.startsWith("ch") ? "t" : nxt[0]);
-      }
-    }
-    const romaji = wr.filter((x) => x).join(" ");
-    return { seg, wr, romaji };
-  });
-}
-
 // ---------- finish ----------
 
 async function finish() {
@@ -432,7 +282,7 @@ async function finish() {
   let built;
   try {
     if (state.lang !== "ja") throw new Error(`目前只支援：${Object.values(LANGS).join("、")}`);
-    built = await buildJapanese(data.words, wordIndex);
+    built = await buildJapanese(state.lines, data.words, wordIndex, api.datasets.values());
   } catch (err) {
     return screen("無法建立", el("p", {}, String(err.message || err)),
       el("button", { class: "primary", onclick: () => stepTranslate() }, "回上一步"));

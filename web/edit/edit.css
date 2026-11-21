@@ -1,0 +1,33 @@
+/* the line editor: a sheet at the bottom, so the video and the lines stay in sight above it */
+.edit-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; justify-content: center;
+  pointer-events: none; }
+.edit-card { pointer-events: auto; width: min(760px, 100%); max-height: 60vh; overflow-y: auto; background: var(--surface);
+  border: 1px solid var(--line); border-bottom: 0; border-radius: 16px 16px 0 0; padding: 10px 14px
+  calc(14px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(0, 0, 0, .18); }
+.edit-head { display: flex; align-items: center; gap: 6px; }
+.edit-head strong { font-size: 15px; }
+.edit-head .icon-btn:disabled { opacity: .3; }
+.edit-status { flex: 1; font-size: 12px; color: var(--muted); text-align: right; }
+.edit-tokens { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 6px; }
+.edit-tok { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; min-width: 36px; padding: 4px 6px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); cursor: pointer; }
+.edit-tok.selected { border-color: var(--accent); background: var(--accent-soft); }
+.edit-jp { font-size: 20px; line-height: 1.9; }
+.edit-jp rt { font-size: 10px; color: var(--muted); }
+.edit-ro { font-size: 12px; color: var(--muted); min-height: 14px; }
+.edit-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 34px; margin-bottom: 6px; }
+.edit-actions .small-chip { margin-left: 0; }
+.edit-label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+.edit-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.edit-row .small-chip, .edit-time .small-chip { margin-left: 0; }
+.edit-text { flex: 1 1 220px; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--text); }
+.edit-tr { width: 100%; box-sizing: border-box; font-size: 15px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--bg); color: var(--text); font-family: inherit; }
+.edit-time { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.edit-time .edit-label { display: inline; margin: 0; width: 32px; }
+.edit-t { min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+.edit-foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+/* the line open in the editor, in the song */
+.line.editing-now { outline: 2px solid var(--accent); outline-offset: -2px; }
+.line-edited { font-size: 12px; color: var(--accent); align-self: center; }
