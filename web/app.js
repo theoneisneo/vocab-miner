@@ -1057,6 +1057,11 @@ function lineJp(ds, line, onWord, mark = null) {
   return jp;
 }
 
+// two overlapping sheets: the usual "copy" sign (drawn, so it looks the same on every phone)
+const COPY_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" '
+  + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/>'
+  + '<path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
+
 // one romanized syllable: consonants + a vowel, or a syllable-final n (しんぱい -> shi n pa i); a doubled
 // consonant goes with the syllable after it (きって -> ki tte)
 const MORA = /n(?![aeiouy'])|[bcdfghjkmnprstvwyz]{0,3}[aeiou]/g;
@@ -1102,11 +1107,12 @@ function exampleLine(dsId, ds, doc, i, wi) {
 function renderLine(doc, line, i) {
   const wr = Array.isArray(line.wr) ? line.wr : [];
   const jp = lineJp(data, line, (w, block) => openWord(w, block, doc, i));
-  const ask = el("button", { class: "ask-btn", "aria-label": "問 AI 這句的翻譯", title: "問 AI 這句的翻譯" }, "翻譯");
+  const ask = el("button", { class: "ask-btn", "aria-label": "問 AI 這句的翻譯", title: "問 AI 這句的翻譯" }, "?");
   ask.addEventListener("click", (ev) => { ev.stopPropagation(); askAI(linePrompt(doc, i)); });
   // pronunciation: only the line and its romaji, copied; you write what you hear below it in the AI app
   const say = line.romaji ? el("button", { class: "ask-btn", "aria-label": "複製歌詞和拼音，問 AI 發音",
-    title: "複製歌詞和拼音，問 AI 發音" }, "發音") : null;
+    title: "複製歌詞和拼音，問 AI 發音" }) : null;
+  if (say) say.innerHTML = COPY_ICON;
   if (say) say.addEventListener("click", async (ev) => {
     ev.stopPropagation();
     const ok = await copyText(`${segText(line)}\n${line.romaji}\n\n`);
