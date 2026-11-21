@@ -1102,8 +1102,16 @@ function exampleLine(dsId, ds, doc, i, wi) {
 function renderLine(doc, line, i) {
   const wr = Array.isArray(line.wr) ? line.wr : [];
   const jp = lineJp(data, line, (w, block) => openWord(w, block, doc, i));
-  const ask = el("button", { class: "ask-btn", "aria-label": "問 AI 這句為什麼這樣翻", title: "問 AI 這句為什麼這樣翻" }, "問");
+  const ask = el("button", { class: "ask-btn", "aria-label": "問 AI 這句的翻譯", title: "問 AI 這句的翻譯" }, "翻譯");
   ask.addEventListener("click", (ev) => { ev.stopPropagation(); askAI(linePrompt(doc, i)); });
+  // pronunciation: only the line and its romaji, copied; you write what you hear below it in the AI app
+  const say = line.romaji ? el("button", { class: "ask-btn", "aria-label": "複製歌詞和拼音，問 AI 發音",
+    title: "複製歌詞和拼音，問 AI 發音" }, "發音") : null;
+  if (say) say.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    const ok = await copyText(`${segText(line)}\n${line.romaji}\n\n`);
+    toast(ok ? "已複製歌詞和拼音：貼到 AI，在下面寫你的問題" : "無法複製到剪貼簿");
+  });
   const ex = line.ex ? el("details", { class: "line-ex" }, el("summary", {}, "解說"), el("p", {}, line.ex)) : null;
   if (ex) ex.addEventListener("click", (ev) => ev.stopPropagation());
   const timed = line.start !== null && line.start !== undefined;
@@ -1126,7 +1134,7 @@ function renderLine(doc, line, i) {
   const li = el("li", { class: "line" + (localGroup(line) ? " merged" : ""), "data-i": i },
     el("div", { class: "line-side" },
       timed ? el("span", { class: "line-time" }, fmtTime(line.start)) : null,
-      ask, timed ? el("div", { class: "bm-row" }, pause, back, bm) : null),
+      say, ask, timed ? el("div", { class: "bm-row" }, pause, back, bm) : null),
     jp,
     romajiLine(line),
     line.tr ? el("div", { class: "line-tr" }, line.tr) : null,
