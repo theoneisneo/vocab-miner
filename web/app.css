@@ -53,8 +53,30 @@ button { font: inherit; color: inherit; }
   padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top));
   background: var(--surface); border-bottom: 1px solid var(--line);
 }
-.topbar h1 { flex: 1; margin: 0; font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* breadcrumb: Sing-along › data file › song; the song title gets the room, the rest shrinks first */
+.crumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.crumbs a { color: inherit; text-decoration: none; }
+.brand { flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 17px;
+  min-height: 40px; padding: 0 4px; border-radius: 8px; }
+.brand-icon { width: 24px; height: 24px; }
+.crumbs a:hover { background: var(--line); }
+.crumb { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.crumb[hidden] { display: none; }
+.crumb .sep { color: var(--muted); flex: none; }
+.crumb-ds { flex: 0 1 auto; max-width: 30%; }
+.crumb-ds a { overflow: hidden; text-overflow: ellipsis; color: var(--muted); padding: 4px; border-radius: 8px; }
+.crumb-page { flex: 1 1 auto; }
+.topbar h1 { margin: 0; font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0; }
+.song-label.unexported-label { font-family: inherit; cursor: pointer; background: none; border-color: var(--warn); color: var(--warn);
+  vertical-align: middle; }
 .topbar .version { font-size: 11px; opacity: 0.5; white-space: nowrap; }
+.menu-version { padding: 8px 16px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
+/* a phone: in a song, only the icon of Sing-along and no data file; the version moves into the ⋯ menu */
+@media (max-width: 599px) {
+  .topbar.in-doc .brand-text, .crumb-ds { display: none !important; }
+  .topbar .version { display: none; }
+}
 .icon-btn { border: 0; background: none; font-size: 24px; line-height: 1; min-width: 40px; min-height: 40px; border-radius: 8px; cursor: pointer; }
 .icon-btn:active { background: var(--line); }
 .menu {
@@ -343,7 +365,7 @@ main { padding: 12px 16px 96px; max-width: 760px; margin: 0 auto; }
 .song-label { display: inline-block; font-size: 11px; padding: 1px 6px; margin-left: 6px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
 .versions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; }
 .versions .song-label { margin-left: 0; }
-.untimed-label { border-color: #d97706; color: #d97706; }
+.untimed-label { border-color: var(--warn); color: var(--warn); }
 .version-link { text-decoration: none; }
 
 /* reading of a Japanese title */

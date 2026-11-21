@@ -223,7 +223,27 @@ function route() {
     const doc = ds && ds.docs.find((d) => d.id === decodeURIComponent(m[2]));
     if (doc) return renderDoc(decodeURIComponent(m[1]), ds, doc, m[3] === undefined ? null : Number(m[3]));
   }
+  // #/ds/<data file>: the home page on that data file's tab (the middle part of the breadcrumb)
+  const d = location.hash.match(/^#\/ds\/(.+)$/);
+  if (d && datasets.has(decodeURIComponent(d[1]))) {
+    prefs.homeDs = decodeURIComponent(d[1]);
+    savePrefs();
+  }
   renderHome();
+}
+
+/** The breadcrumb in the top bar: Sing-along › data file › song (on a phone: the icon › song). */
+function setCrumbs(dsId = null, dsTitle = "", page = null) {
+  $(".topbar").classList.toggle("in-doc", !!page);
+  $("#crumb-ds").hidden = !dsId;
+  if (dsId) {
+    const a = $("#crumb-ds-link");
+    a.textContent = dsTitle || dsId;
+    a.href = `./#/ds/${encodeURIComponent(dsId)}`;
+  }
+  $("#crumb-page").hidden = !page;
+  $("#title").textContent = page || "";
+  document.title = page ? `${page} · Sing-along` : "Sing-along";
 }
 window.addEventListener("hashchange", route);
 
@@ -232,8 +252,7 @@ function renderHome() {
   renderSeq++;
   editCtx = null;
   editingLines = false;
-  $("#title").textContent = "Sing-along";
-  $("#back").hidden = true;
+  setCrumbs();
   $("#fav-btn").hidden = true;
   view.replaceChildren();
   if (!datasets.size) {
@@ -660,8 +679,7 @@ async function renderDoc(dsId, ds, orig, startAt = null) {
   // the song as shown: its lines as edited or merged on this device (see "edited lines"); a copy, so editing
   // changes only `lines`
   const doc = Object.assign({}, orig, { lines: songLines(dsId, ds, orig) });
-  $("#title").textContent = doc.title;
-  $("#back").hidden = false;
+  setCrumbs(dsId, ds.title, doc.title);
   const favBtn = $("#fav-btn");
   const showFav = () => {
     const on = isFav(dsId, doc.id);
@@ -1089,7 +1107,10 @@ function showEditing() {
   }
   const dirty = unexported(songKey(dsId, orig));
   $("#title").replaceChildren(orig.title, dirty
-    ? el("span", { class: "unsaved", title: "歌詞有修改，還沒匯出（選單 → 編輯歌詞 → 匯出資料檔）" }, " *") : "");
+    ? el("button", { class: "song-label unexported-label", title: "歌詞有修改，還沒匯出", onclick: () => dialog("還沒匯出",
+      el("p", {}, "這首歌的修改只存在這台裝置上。要帶到其他裝置，或留一份備份，請匯出資料檔。"),
+      el("button", { class: "primary", onclick: () => { $("#dialog").hidden = true; exportEdited(dsId); } }, "匯出資料檔"))
+    }, "未匯出") : "");
 }
 
 /** A shown line as written to an exported data file: joined lines keep `merged` (what `vm apply-edits` reads);
@@ -1739,7 +1760,6 @@ function openRateSettings() {
 }
 
 // ---------- menu & import/export ----------
-$("#back").addEventListener("click", () => { location.hash = ""; });
 if (FEATURES.create) {   // optional feature
   $("#menu").insertBefore(el("button", { "data-action": "create" }, "建立歌曲…"), $('#menu [data-action="rates"]'));
 }
@@ -1893,5 +1913,8 @@ async function showVersion() {
   if (!v) {
     try { v = (await caches.keys()).map(pick).filter(Boolean).sort((a, b) => a.slice(1) - b.slice(1)).pop(); } catch { /* no cache API */ }
   }
-  if (v) $("#version").textContent = v;
+  if (v) {
+    $("#version").textContent = v;
+    $("#menu-version").textContent = `版本 ${v}`;              // on a phone the top bar has no room for it
+  }
 }

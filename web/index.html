@@ -13,14 +13,19 @@
 </head>
 <body>
   <header class="topbar">
-    <button id="back" class="icon-btn" aria-label="返回" hidden>‹</button>
-    <h1 id="title">Sing-along</h1>
+    <!-- where you are: Sing-along › data file › song; each part is a link (opens in a new tab too) -->
+    <nav class="crumbs" aria-label="位置">
+      <a id="home-link" class="brand" href="./#/" aria-label="Sing-along 首頁"><img class="brand-icon" src="icons/icon.svg" alt=""><span class="brand-text">Sing-along</span></a>
+      <span id="crumb-ds" class="crumb crumb-ds" hidden><span class="sep" aria-hidden="true">›</span><a id="crumb-ds-link" href="./#/"></a></span>
+      <span id="crumb-page" class="crumb crumb-page" hidden><span class="sep" aria-hidden="true">›</span><h1 id="title"></h1></span>
+    </nav>
     <button id="fav-btn" class="icon-btn star" aria-label="加入最愛" hidden>☆</button>
     <span id="version" class="version" title="網頁版本"></span>
     <button id="menu-btn" class="icon-btn" aria-label="選單" aria-haspopup="true">⋯</button>
   </header>
 
   <div id="menu" class="menu" hidden>
+    <div id="menu-version" class="menu-version"></div>
     <button data-action="home">回首頁</button>
     <button data-action="import">匯入或更新資料檔…</button>
     <button data-action="rates">播放設定…</button>
