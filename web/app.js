@@ -1234,17 +1234,20 @@ const COPY_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" s
   + '<path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
 
 // one romanized syllable: consonants + a vowel, or a syllable-final n (しんぱい -> shi n pa i); a doubled
-// consonant goes with the syllable after it (きって -> ki tte)
-const MORA = /n(?![aeiouy'])|[bcdfghjkmnprstvwyz]{0,3}[aeiou]/g;
-const ROMANIZED = /^(?:n(?![aeiouy])|[bcdfghjkmnprstvwyz]{0,3}[aeiou])+$/;
+// consonant goes with the syllable after it (きって -> ki tte). A word can end in that doubled consonant when the
+// syllable after it is the next word (嬉しかっ|た -> ureshikat ta): the "t" stands alone and takes the colour of
+// the syllable after it, so "t ta" reads like "tta".
+const MORA = /n(?![aeiouy'])|[bcdfghjkmnprstvwyz]{0,3}[aeiou]|[bcdfghjkmpstwz]$/g;
+const ROMANIZED = /^(?:n(?![aeiouy])|[bcdfghjkmnprstvwyz]{0,3}[aeiou])*[bcdfghjkmpstwz]?$/;
+const SYLLABLE_END = /[aeiou]$|^n$/;
 
 /** Romaji as syllable spans in alternating colours (alt.on carries the colour on to the next call); text that is
  * not plain romaji (capitals, punctuation, English) comes back as it is. */
 function moraParts(text, alt) {
-  if (text !== text.toLowerCase() || !ROMANIZED.test(text)) return [text];
+  if (!text || text !== text.toLowerCase() || !ROMANIZED.test(text)) return [text];
   return text.match(MORA).map((m) => {
     const span = el("span", { class: alt.on ? "mora-b" : "mora-a" }, m);
-    alt.on = !alt.on;
+    if (SYLLABLE_END.test(m)) alt.on = !alt.on;      // a lone doubled consonant leaves the colour to the next one
     return span;
   });
 }
