@@ -52,7 +52,7 @@ def test_read_line_edits_and_merges_apart(tmp_path):
     p = export(tmp_path, edited_lines())
     [r] = read_line_edits(p)
     assert (r.source_id, r.doc_id, len(r.lines)) == ("songs/x", "song", 4)
-    assert [c[1] for c in r.changes] == ["朝の雨が", "降る", "空が晴れた！"]
+    assert [c[1] for c in r.changes] == ["朝の雨が", "降る", "空が晴れた！  [start 0:12.00 -> 0:12.20]"]
     assert len(r.refs) == 3                                  # the split line's original is listed once
     assert read_merges(p, skip={("songs/x", "song")}) == []
 
@@ -92,3 +92,11 @@ def test_subtitles_become_an_lrc(tmp_path):
     apply_rewrites(load_config(tmp_path), read_line_edits(export(tmp_path, edited_lines())), log=lambda m: None)
     assert not (raw / "song.vtt").exists() and (raw / "song.vtt.bak").exists()
     assert "[00:02.50]降る" in (raw / "song.lrc").read_text(encoding="utf-8")
+
+
+def test_retimed_line_shows_its_time(tmp_path):
+    """A line only moved in time (對時) says how, since its text is the same before and after."""
+    lines = [{"seg": seg("朝の雨が降る"), "start": 0.7, "end": 5.0, "tr": "早上下雨", "edited": True,
+              "orig": [orig(1, 1.0, "朝の雨が降る")]}]
+    [r] = read_line_edits(export(tmp_path, lines))
+    assert r.changes == [(["朝の雨が降る"], "朝の雨が降る  [start 0:01.00 -> 0:00.70]")]

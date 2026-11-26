@@ -57,7 +57,8 @@ const prefs = Object.assign({ ruby: true, romaji: true, tr: true, gloss: false, 
   loopGap: 0.5,      // 單句重複: seconds of silence before the line starts again (kept per device, like the rest)
   loopTail: 0,       // 單句重複: seconds played past the line's end, for a last sound that runs on
   fontScale: 1,      // size of the lines' text (per device: a laptop may want it bigger than a phone)
-  karaoke: false },  // experimental: light the line being sung piece by piece (播放設定)
+  karaoke: false,   // experimental: light the line being sung piece by piece (播放設定)
+  tapLead: 0.3 },    // 對時: seconds a tap is moved back, since it always comes after the sound
   safeJson(localStorageGet(PREFS_KEY)));
 // a song side by side (player and controls left, lines right): the same query as in app.css
 const WIDE_QUERY = "(min-width: 900px) and (orientation: landscape)";
@@ -1096,6 +1097,24 @@ async function openLineEditor(i) {
   }
 }
 
+/** 對時: time the lines by tapping as the song plays (optional feature in web/edit/tap.js). */
+async function openTapTiming() {
+  try {
+    (await import("./edit/tap.js")).openTapTiming({
+      el, toast,
+      lines: editableLines,
+      save: saveSongLines,
+      time: () => (player && player.ready() ? player.time() : null),
+      seek: (t) => { if (player && player.ready()) { player.seek(t); player.play(); } },
+      rate: () => prefs.rate || 1,
+      lead: () => (typeof prefs.tapLead === "number" ? prefs.tapLead : 0.3),
+      setLead: (v) => { prefs.tapLead = v; savePrefs(); },
+    });
+  } catch (err) {
+    dialog("無法開啟對時", el("p", {}, "需要網路才能第一次載入。"), el("p", { class: "hint" }, String(err.message || err)));
+  }
+}
+
 /** Re-draw the lines after a change, without restarting the player. */
 function refreshLines() {
   const { dsId, ds, orig, doc, ol } = editCtx;
@@ -1117,8 +1136,9 @@ function showEditing() {
     const entry = lineEdits.get(songKey(dsId, orig));
     const stale = entry && entry.base !== linesFingerprint(orig.lines);
     root.querySelector(".stick").append(el("div", { class: "edit-bar" },
-      el("span", {}, "編輯歌詞：✎ 改字、刪詞、拆句、調時間和翻譯，⊕ 和下一句合併。修改存在這台裝置上。"),
+      el("span", {}, "編輯歌詞：✎ 改字、刪詞、拆句、調時間和翻譯，⊕ 和下一句合併，對時：邊聽邊按來設每句的開始。修改存在這台裝置上。"),
       stale ? el("span", { class: "unsaved" }, "資料檔更新過：這首顯示的是你根據舊版做的修改。") : null,
+      el("button", { class: "chip small-chip", onclick: openTapTiming }, "對時"),
       el("button", { class: "chip small-chip", onclick: () => exportEdited(dsId) }, "匯出資料檔"),
       entry || (prefs.merges || {})[songKey(dsId, orig)]
         ? el("button", { class: "chip small-chip", onclick: discardSongEdits }, "捨棄這首的修改") : null,

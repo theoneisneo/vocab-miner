@@ -45,6 +45,14 @@ class DocRewrite:
     changes: list[tuple[list[str], str]]                       # (original texts, new text) of the edited lines
 
 
+def _ref_key(r: dict) -> tuple:
+    return (r.get("id"), r.get("start"), r.get("text"))
+
+
+def _clock(t: float) -> str:
+    return f"{int(t // 60)}:{t % 60:05.2f}"
+
+
 def _seg_text(line: dict) -> str:
     return "".join(s[0] for s in line.get("seg") or [])
 
@@ -61,7 +69,7 @@ def read_line_edits(path: Path) -> list[DocRewrite]:
         lines = d.get("lines", [])
         if not any(ln.get("edited") for ln in lines):
             continue
-        refs, changes, new = [], [], []
+        refs, changes, new, seen = [], [], [], set()
         for ln in lines:
             text = _seg_text(ln)
             if ln.get("edited") or ln.get("merged"):
@@ -69,7 +77,15 @@ def read_line_edits(path: Path) -> list[DocRewrite]:
             else:
                 refs.append({"id": ln.get("id"), "start": ln.get("start"), "text": text})
             if ln.get("edited"):
-                changes.append(([o.get("text", "") for o in ln.get("orig") or []], text))
+                orig = ln.get("orig") or []
+                after = text
+                old, start = (orig[0].get("start") if orig else None), ln.get("start")
+                # a retimed line (對時) shows how; the later parts of a split line start later anyway
+                first = not orig or _ref_key(orig[0]) not in seen
+                seen.update(_ref_key(o) for o in orig)
+                if first and isinstance(old, (int, float)) and isinstance(start, (int, float)) and abs(old - start) >= 0.01:
+                    after += f"  [start {_clock(old)} -> {_clock(start)}]"
+                changes.append(([o.get("text", "") for o in orig], after))
             new.append(EditedLine(text=text, pieces=[(s[0], s[1]) for s in ln.get("seg") or []],
                                   start=ln.get("start"), end=ln.get("end"), tr=ln.get("tr") or "",
                                   changed=bool(ln.get("edited"))))
